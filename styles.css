@@ -1,0 +1,251 @@
+body{
+    display: flex;
+    align-items: center;
+    gap: 48px;
+    width: 100%;
+    height: 100%;
+    background-color: #F5F5F5;
+    background-image: url('../Assets/dots.svg');
+  background-repeat:repeat;
+  background-position: center;
+  background-size: cover;
+}
+*{
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+.inter-semibold {
+  font-family: "Inter", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 600;
+  font-style: normal;
+}
+.inter-medium {
+  font-family: "Inter", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 500;
+  font-style: normal;
+}
+.inter-regular {
+  font-family: "Inter", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 400;
+  font-style: normal;
+}
+.primary-color{
+color:#404040;   
+}
+section{
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    height: 100svh;
+}
+
+.nav-container{
+   display: flex;
+max-width: 360px;
+padding: 56px 32px 32px 32px;
+flex-direction: column;
+justify-content: space-between;
+align-items: flex-start;
+flex: 1 0 0;
+align-self: stretch;
+border-right: 1px solid #E7E7E7;
+background: #FFF;
+}
+
+.result-container{
+display: flex;
+padding: 48px;
+flex-direction: column;
+justify-content: center;
+align-items: flex-start;
+flex: 1 0 0;
+align-self: stretch;
+width: 100%;}
+
+.Panel-container{
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 72px;
+    align-self:stretch
+}
+
+#logo{
+    color: #000;
+    height: 80px;
+font-size: 24px;
+font-style: normal;
+font-weight: 400;
+line-height: 110%; /* 26.4px */
+}
+
+.panels{
+   display: flex;
+flex-direction: column;
+align-items: flex-start;
+gap: 32px;
+align-self: stretch;
+}
+
+#input-container{
+    display: flex;
+justify-content: space-between;
+align-items: center;
+flex: 1 0 0;
+gap:16px
+}
+#clearbtn{
+    display: flex;
+width: 27px;
+height: 24px;
+justify-content: center;
+align-items: center;
+border-radius: 999px;
+background: #E7E7E7 ;
+}
+#clearbtn:hover {
+  background-color: #40404029;
+  cursor: pointer;
+}
+#name-input{
+    color: #404040;
+font-size: 32px;
+font-style: normal;
+font-weight: 500;
+line-height: 110%; /* 35.2px */
+letter-spacing: 4%;/* 0.32px */;
+border: 0px;
+width:100%
+}
+#name-input::placeholder {
+  color: #C4C4C4;
+}
+
+#name-input:active, #name-input:focus {
+  border:0px;
+  outline: none;
+  box-shadow: none;
+}
+
+.controls-container{
+    display: flex;
+flex-direction: column;
+align-items: flex-start;
+gap: 8px;
+align-self: stretch;
+}
+
+.controls{
+    display: flex;
+height: 40px;
+align-items: flex-start;
+gap: 16px;
+align-self: stretch;
+}
+
+.ctrls-btn{
+    display: flex;
+justify-content: center;
+align-items: center;
+gap: 10px;
+flex: 1 0 0;
+align-self: stretch;
+border-radius: 12px;
+background: #E7E7E7;
+color: #404040;
+font-family: Inter;
+font-size: 16px;
+font-style: normal;
+font-weight: 500;
+line-height: 110%; /* 17.6px */
+border: 0px;
+padding: 8px 12px
+}
+
+.ctrls-btn:hover {
+  background-color: #40404029;
+  cursor: pointer;
+}
+
+.ctrls-btn.active {
+  background-color: var(--primary-color, #404040);
+  color: #fff;
+}
+
+.ctrls-btn.active svg * {
+  fill: #fff !important;
+opacity: 1 !important;}
+
+.range-container {
+  display: flex;
+  position: relative;
+height: 40px;
+padding: 0 0px;
+justify-content: space-between;
+align-items: center;
+align-self: stretch;
+border-radius: 12px;
+background: #E7E7E7;
+}
+
+.rangebits-container{
+    display: flex;
+    width: 100%;
+    height: 24px;
+    padding: 0 16px;
+    justify-content: space-between;
+    align-items: center;
+}
+.range-bits {
+  width: 10px;
+  height: 24px;
+  border-radius: 200px;
+background: rgba(0, 0, 0, 0.10);
+}
+.range-bits:hover {
+  background-color: #40404044;
+  cursor: pointer;
+}
+.range-slider{
+    display: flex;
+width: 100%;
+height: 40px;
+padding: 2px;
+justify-content: flex-end;
+align-items: center;
+gap: 10px;
+position: absolute;
+border-radius: 12px;
+overflow: hidden;
+pointer-events: none;
+}
+
+.range-fill {
+    position: absolute;
+    display: flex;
+    justify-content: flex-end;
+align-items: center;
+padding: 2px;
+    left: 0;
+    top: 0;
+    width:100%;
+    height: 100%;
+    background: #404040;
+    border-radius: 12px;
+  z-index: 0;
+  pointer-events: none;
+  transition: width 0.1s;
+}
+
+.slider-thumb{
+    width: 24px;
+    height: 100%;
+    border-radius: 10px;
+    background: #FFF;
+    cursor: pointer;
+    pointer-events: auto;
+}
