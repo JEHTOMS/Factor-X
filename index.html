@@ -8,13 +8,25 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/opentype.js@latest/dist/opentype.min.js"></script>
 </head>
 <body>
     <section>
         <div class="nav-container">
             <div class="Panel-container">
               <div class="inter-semibold" id="logo">
-                <h3>Factor X</h3>
+              <svg width="104" height="37" viewBox="0 0 104 37" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect y="6.43555" width="7.67923" height="28.7701" rx="3.83961" fill="#404040"/>
+<rect x="10.707" y="15.1426" width="7.67923" height="11.3566" rx="3.83961" fill="#404040"/>
+<rect x="21.415" y="9.46387" width="7.67923" height="22.7132" rx="3.83961" fill="#404040"/>
+<rect x="32.123" y="4.9209" width="7.67923" height="31.7985" rx="3.83961" fill="#404040"/>
+<rect x="42.8301" y="15.1426" width="7.67923" height="11.3566" rx="3.83961" fill="#404040"/>
+<rect x="53.5381" y="17.792" width="7.67923" height="6.05685" rx="3.02843" fill="#404040"/>
+<rect x="64.2461" y="6.43555" width="7.67923" height="28.7701" rx="3.83961" fill="#404040"/>
+<path d="M75.2758 2.54431V1.39252H80.7024V2.54431H78.6795V8H77.2987V2.54431H75.2758ZM81.2327 1.39252H82.9555L84.7752 5.83192H84.8526L86.6722 1.39252H88.3951V8H87.04V3.69933H86.9852L85.2752 7.96774H84.3525L82.6426 3.6832H82.5877V8H81.2327V1.39252Z" fill="#404040"/>
+</svg>
+
+
               </div> 
             <div class="panels">
               <div id="input-container">
@@ -32,12 +44,12 @@
               <div class="controls-container">
                 <p class="inter-medium primary-color">Controls</p>
                 <div class="controls" id="ctrls">
-                    <button class="ctrls-btn active" id="sound" name="sound">Sound</button>
-                    <button class="ctrls-btn" id="touch" name="touch">Touch</button>
+                    <button class="ctrls-btn active" id="touch" name="touch">Touch</button>
+                    <button class="ctrls-btn" id="sound" name="sound">Sound</button>
                 </div>
               </div>
               <div class="controls-container" id="intensity">
-                <p class="inter-medium primary-color">Intensity</p>
+                <p class="inter-medium primary-color">Sensitivity</p>
                 <div class="range-container">
                   <div class="rangebits-container">
                   <div class="range-bits"></div>
@@ -96,7 +108,24 @@
         </div>
     </section>
      <section>
-        <div class="result-container"></div>
+        <div class="result-container">
+          <div class="distortion-path">
+            <div class="distortion-effect" id="1"></div>
+            <div class="distortion-effect" id="2"></div>
+            <div class="distortion-effect" id="3"></div>
+            <div class="distortion-effect" id="4"></div>
+            <div class="distortion-effect" id="5"></div>
+            <div class="distortion-effect" id="6"></div>
+            <div class="distortion-effect" id="7"></div>
+            <div class="distortion-effect" id="8"></div>
+            <div class="distortion-effect" id="9"></div>
+            <div class="distortion-effect" id="10"></div>
+            <div class="distortion-effect" id="11"></div>
+            <div class="distortion-effect" id="12"></div>
+            <div class="distortion-effect" id="13"></div>
+            <div class="distortion-effect" id="14"></div>
+          </div>
+        </div>
      </section>
      <script src="./main.js"></script>
 </body>
