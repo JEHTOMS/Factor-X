@@ -4,7 +4,7 @@ body{
     width: 100vw;
     height: 100vh;
     background-color: #F5F5F5;
-    background-image: url('../Assets/dots.svg');
+    background-image: url('./Assets/dots.svg');
     background-repeat: repeat;
     background-position: center;
     background-size: cover;
