@@ -57,7 +57,7 @@ window.addEventListener('DOMContentLoaded', () => {
   console.log('DOMContentLoaded fired - Setting up div-based text distortion');
   
   // Use the locally provided ausano-bold.otf font file
-  const fontUrl = './Assets-root/Ausano-Bold.otf';
+  const fontUrl = './Assets/Ausano-Bold.otf';
 
   opentype.load(fontUrl, function(err, font) {
     if (err) {
