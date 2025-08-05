@@ -957,24 +957,41 @@ querySelectorAllDual('#ctrls .ctrls-btn').forEach(btn => {
       // Reset to default height to clear any audio effects
       resetToDefaultHeight();
       
-      // Check if mouse is over the result container (for devices with mouse support)
-      const resultContainer = document.querySelector('.result-container');
-      if (resultContainer && event.clientX !== undefined) {
-        // Only check mouse position if the event has mouse coordinates
-        const rect = resultContainer.getBoundingClientRect();
-        const mouseOverContainer = 
-          event.clientX >= rect.left && 
-          event.clientX <= rect.right && 
-          event.clientY >= rect.top && 
-          event.clientY <= rect.bottom;
-          
-        if (mouseOverContainer) {
-          startMouseDistortion();
-        } else {
-          resetToDefaultHeight();
+      // Check if this is a mobile device or touch-capable device
+      const isMobileDevice = window.innerWidth <= 768 || 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      
+      if (isMobileDevice) {
+        // On mobile devices, start mouse distortion immediately since there's no hover state
+        // Set default mouse position to center of screen for initial distortion
+        mouseX = 0.5; // Center horizontally
+        mouseY = 0.3; // Slightly towards top for better initial effect
+        
+        // The distortion will be controlled by touch events on the result container
+        setTimeout(() => {
+          // Small delay to ensure resetToDefaultHeight completes first
+          if (isMouseTracking) { // Only start if still in touch mode
+            startMouseDistortion();
+          }
+        }, 50);
+      } else {
+        // For desktop devices with mouse, check if mouse is over the result container
+        const resultContainer = document.querySelector('.result-container');
+        if (resultContainer && event.clientX !== undefined) {
+          // Only check mouse position if the event has mouse coordinates
+          const rect = resultContainer.getBoundingClientRect();
+          const mouseOverContainer = 
+            event.clientX >= rect.left && 
+            event.clientX <= rect.right && 
+            event.clientY >= rect.top && 
+            event.clientY <= rect.bottom;
+            
+          if (mouseOverContainer) {
+            startMouseDistortion();
+          } else {
+            resetToDefaultHeight();
+          }
         }
       }
-      // For touch devices or when mouse position is unknown, distortion will start when user interacts with the area
     }
   });
 });
