@@ -1484,7 +1484,7 @@ function initBottomSheet() {
     } else {
       // Always use interpolated height during dragging for smooth animation
       navContainer.style.height = `${currentHeight}px`;
-      navContainer.style.overflow = 'visible'; // Keep content visible, no masking
+      navContainer.style.overflow = dragProgress > 0 ? 'hidden' : 'visible';
     }
     
     // Fade out controls progressively as we approach collapsed state
@@ -1534,12 +1534,7 @@ function initBottomSheet() {
     isDragging = true;
     startY = getTouchY(e);
     
-    // Disable transitions for immediate drag response
-    navContainer.style.transition = 'none';
-    controlsContainers.forEach(container => {
-      container.style.transition = 'none';
-    });
-    
+    mobileNav.style.transition = 'none';
     document.body.style.userSelect = 'none';
     
     // Attach move and end listeners to document for both mouse and touch
@@ -1551,7 +1546,6 @@ function initBottomSheet() {
       document.addEventListener('touchend', handleDragEnd);
     }
     e.preventDefault();
-    e.stopPropagation(); // Prevent event bubbling
   }
   
   function handleDragMove(e) {
@@ -1567,27 +1561,11 @@ function initBottomSheet() {
     currentY = getTouchY(e);
     const deltaY = currentY - startY;
     
-    // Calculate drag progress with improved sensitivity
-    // Increased max distance for less sensitive dragging
-    const maxDragDistance = 350; // Increased from 200px for less sensitivity
-    const rawProgress = Math.max(-1, Math.min(deltaY / maxDragDistance, 1)); // -1 to 1 range
+    // Calculate drag progress (positive deltaY = dragging down = collapsing)
+    const maxDragDistance = 200; // Maximum drag distance before fully collapsed
+    const dragProgress = Math.max(0, Math.min(deltaY / maxDragDistance, 1)); // 0 to 1
     
-    // Apply easing curve for smoother drag feel
-    // Use ease-out curve: stronger resistance at extremes
-    let easedProgress;
-    if (rawProgress >= 0) {
-      // Collapsing (dragging down): ease-out for smoother collapse
-      easedProgress = 1 - Math.pow(1 - rawProgress, 2);
-    } else {
-      // Expanding (dragging up): ease-out for smoother expansion
-      const absProgress = Math.abs(rawProgress);
-      easedProgress = -(1 - Math.pow(1 - absProgress, 2));
-    }
-    
-    // Convert back to 0-1 range for updateNavHeight
-    const dragProgress = Math.max(0, Math.min(easedProgress, 1));
-    
-    // Apply smooth height-based collapse/expansion
+    // Apply smooth height-based collapse
     updateNavHeight(dragProgress);
   }
   
@@ -1596,44 +1574,34 @@ function initBottomSheet() {
     
     isDragging = false;
     const deltaY = currentY - startY;
+    const threshold = 80; // Minimum drag distance to trigger collapse (40% of maxDragDistance)
     
-    // Adjusted thresholds for the new max distance (350px)
-    const upwardThreshold = -120; // Upward drag threshold (was -80)
-    const downwardThreshold = 120; // Downward drag threshold (was 80)
-    
-    // Add smooth transitions with improved easing for final animation
-    navContainer.style.transition = 'height 0.4s cubic-bezier(0.25, 0.8, 0.25, 1)'; // Ease-out-quart
+    // Add smooth transitions for final animation
+    navContainer.style.transition = 'height 0.3s ease-out';
     controlsContainers.forEach(container => {
-      container.style.transition = 'opacity 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), max-height 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1)';
+      container.style.transition = 'opacity 0.3s ease-out, max-height 0.3s ease-out, transform 0.3s ease-out';
     });
     
-    // Determine final state based on drag distance with improved logic
-    if (deltaY > downwardThreshold) {
+    // Determine final state based on drag distance
+    if (deltaY > threshold) {
       // Dragged down enough - collapse to show only input
       isCollapsed = true;
       mobileNav.classList.add('collapsed');
       updateNavHeight(1, true); // Fully collapsed and finalized
-    } else if (deltaY < upwardThreshold) {
-      // Dragged up enough - expand to full height
+    } else {
+      // Not dragged enough or dragged up - expand to full height
       isCollapsed = false;
       mobileNav.classList.remove('collapsed');
       updateNavHeight(0, true); // Fully expanded and finalized
-    } else {
-      // Not dragged enough in either direction - return to current state with gentle animation
-      if (isCollapsed) {
-        updateNavHeight(1, true); // Stay collapsed
-      } else {
-        updateNavHeight(0, true); // Stay expanded
-      }
     }
     
-    // Clean up transitions after animation completes (increased timeout for longer animation)
+    // Clean up transitions after animation completes
     setTimeout(() => {
       navContainer.style.transition = '';
       controlsContainers.forEach(container => {
         container.style.transition = '';
       });
-    }, 400); // Increased from 300ms to match new animation duration
+    }, 300);
     
     // Re-enable interactions
     document.body.style.userSelect = '';
@@ -1654,10 +1622,10 @@ function initBottomSheet() {
   mobileGrabber.addEventListener('click', () => {
     isCollapsed = !isCollapsed;
     
-    // Add smooth transitions for click toggle with improved easing
-    navContainer.style.transition = 'height 0.4s cubic-bezier(0.25, 0.8, 0.25, 1)';
+    // Add smooth transitions for click toggle
+    navContainer.style.transition = 'height 0.3s ease-out';
     controlsContainers.forEach(container => {
-      container.style.transition = 'opacity 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), max-height 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1)';
+      container.style.transition = 'opacity 0.3s ease-out, max-height 0.3s ease-out, transform 0.3s ease-out';
     });
     
     if (isCollapsed) {
@@ -1674,6 +1642,6 @@ function initBottomSheet() {
       controlsContainers.forEach(container => {
         container.style.transition = '';
       });
-    }, 400);
+    }, 300);
   });
 }
