@@ -424,7 +424,7 @@ overflow: hidden; /* Prevent content overflow */
 }
 #mobile-controls {
     display: flex;
-    flex-direction: row;
+    flex-direction: column;
     align-items: flex-start;
     gap: 16px;
     width: 100%;
