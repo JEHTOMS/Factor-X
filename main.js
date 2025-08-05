@@ -1470,20 +1470,22 @@ function initBottomSheet() {
     const maxDragDistance = 200; // Maximum drag distance before fully hidden
     const dragProgress = Math.max(0, Math.min(deltaY / maxDragDistance, 1)); // 0 to 1
     
-    // Don't move the nav - keep it in place and only shrink/expand it
-    // Calculate opacity for controls based on drag progress
-    // Start fading when 20% dragged, fully hidden at 70% dragged
-    let controlOpacity = 1;
-    if (dragProgress > 0.2) {
-      const fadeProgress = (dragProgress - 0.2) / 0.5; // 0.2 to 0.7 mapped to 0 to 1
-      controlOpacity = Math.max(0, 1 - fadeProgress);
-    }
+    // Use CSS mask to create smooth reveal/hide animation
+    // Calculate mask position - higher percentage means more revealed
+    const maskRevealPercentage = Math.max(0, (1 - dragProgress) * 100);
     
-    // Apply opacity to all control containers and hide when nearly invisible
+    // Apply mask animation to control containers for smooth collapse effect
     controlsContainers.forEach(container => {
-      container.style.opacity = controlOpacity;
-      // Hide containers that are nearly invisible to allow nav to shrink in real-time
-      if (controlOpacity < 0.1) {
+      // Create a linear gradient mask that reveals from bottom to top
+      container.style.maskImage = `linear-gradient(to top, transparent ${100 - maskRevealPercentage}%, black ${100 - maskRevealPercentage + 10}%, black 100%)`;
+      container.style.webkitMaskImage = `linear-gradient(to top, transparent ${100 - maskRevealPercentage}%, black ${100 - maskRevealPercentage + 10}%, black 100%)`;
+      
+      // Also apply transform for additional smoothness
+      const translateY = dragProgress * 20; // Slight upward movement
+      container.style.transform = `translateY(-${translateY}px)`;
+      
+      // Hide containers when mostly collapsed to allow nav to shrink
+      if (dragProgress > 0.8) {
         container.style.display = 'none';
         mobileNav.classList.add('collapsed');
       } else {
@@ -1503,38 +1505,51 @@ function initBottomSheet() {
     const deltaY = currentY - startY;
     const threshold = 80; // Minimum drag distance to trigger collapse (40% of maxDragDistance)
     
-    // Re-enable transitions for smooth snap animation
+    // Re-enable transitions for smooth snap animation with mask support
     controlsContainers.forEach(container => {
-      container.style.transition = 'opacity 0.3s ease-out';
+      container.style.transition = 'mask-size 0.3s ease-out, -webkit-mask-size 0.3s ease-out, transform 0.3s ease-out';
     });
     
     // Determine final state based on drag distance
     if (deltaY > threshold) {
-      // Dragged down enough - collapse (hide controls, nav shrinks to content)
+      // Dragged down enough - collapse with mask animation
       isCollapsed = true;
       mobileNav.classList.add('collapsed');
       controlsContainers.forEach(container => {
-        container.style.opacity = '0';
-        container.style.display = 'none'; // Hide to allow nav to shrink
+        // Animate mask to fully hide content
+        container.style.maskImage = `linear-gradient(to top, transparent 100%, black 100%)`;
+        container.style.webkitMaskImage = `linear-gradient(to top, transparent 100%, black 100%)`;
+        container.style.transform = `translateY(-20px)`;
+        
+        // Hide after mask animation completes
+        setTimeout(() => {
+          container.style.display = 'none';
+        }, 300);
       });
       // Set final expanded distortion path height
       updateResultContainerHeight(1);
     } else {
-      // Not dragged enough or dragged up - expand (show controls, reset position)
+      // Not dragged enough or dragged up - expand with mask animation
       isCollapsed = false;
       mobileNav.classList.remove('collapsed');
       controlsContainers.forEach(container => {
         container.style.display = ''; // Show first to restore layout
-        container.style.opacity = '1';
+        // Animate mask to fully reveal content
+        container.style.maskImage = `linear-gradient(to top, transparent 0%, black 10%, black 100%)`;
+        container.style.webkitMaskImage = `linear-gradient(to top, transparent 0%, black 10%, black 100%)`;
+        container.style.transform = `translateY(0px)`;
       });
       // Reset distortion path to normal height
       updateResultContainerHeight(0);
     }
     
-    // Clean up transitions after animation
+    // Clean up mask and transform styles after animation completes
     setTimeout(() => {
       controlsContainers.forEach(container => {
         container.style.transition = '';
+        container.style.maskImage = '';
+        container.style.webkitMaskImage = '';
+        container.style.transform = '';
       });
     }, 300);
     
@@ -1557,16 +1572,23 @@ function initBottomSheet() {
   mobileGrabber.addEventListener('click', () => {
     isCollapsed = !isCollapsed;
     
-    // Add smooth transitions for click toggle
+    // Add smooth mask transitions for click toggle
     controlsContainers.forEach(container => {
-      container.style.transition = 'opacity 0.3s ease-out';
+      container.style.transition = 'mask-size 0.3s ease-out, -webkit-mask-size 0.3s ease-out, transform 0.3s ease-out';
     });
     
     if (isCollapsed) {
       mobileNav.classList.add('collapsed');
       controlsContainers.forEach(container => {
-        container.style.display = 'none';
-        container.style.opacity = '0';
+        // Animate mask to fully hide content
+        container.style.maskImage = `linear-gradient(to top, transparent 100%, black 100%)`;
+        container.style.webkitMaskImage = `linear-gradient(to top, transparent 100%, black 100%)`;
+        container.style.transform = `translateY(-20px)`;
+        
+        // Hide after mask animation completes
+        setTimeout(() => {
+          container.style.display = 'none';
+        }, 300);
       });
       // Set final expanded distortion path height
       updateResultContainerHeight(1);
@@ -1574,16 +1596,22 @@ function initBottomSheet() {
       mobileNav.classList.remove('collapsed');
       controlsContainers.forEach(container => {
         container.style.display = '';
-        container.style.opacity = '1';
+        // Animate mask to fully reveal content
+        container.style.maskImage = `linear-gradient(to top, transparent 0%, black 10%, black 100%)`;
+        container.style.webkitMaskImage = `linear-gradient(to top, transparent 0%, black 10%, black 100%)`;
+        container.style.transform = `translateY(0px)`;
       });
       // Reset distortion path to normal height
       updateResultContainerHeight(0);
     }
     
-    // Clean up transitions
+    // Clean up mask and transform styles after animation completes
     setTimeout(() => {
       controlsContainers.forEach(container => {
         container.style.transition = '';
+        container.style.maskImage = '';
+        container.style.webkitMaskImage = '';
+        container.style.transform = '';
       });
     }, 300);
   });

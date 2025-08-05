@@ -418,9 +418,10 @@ overflow: hidden; /* Prevent content overflow */
     width: 100%;
     max-width: 100%; /* Prevent overflow */
     box-sizing: border-box; /* Include padding in width calculation */
-    /* Hardware acceleration for smooth opacity transitions */
-    will-change: opacity;
+    /* Hardware acceleration for smooth mask and transform animations */
+    will-change: mask-image, transform, opacity;
     backface-visibility: hidden;
+    transform: translate3d(0, 0, 0); /* Force hardware acceleration */
 }
 #mobile-controls {
     display: flex;
@@ -552,5 +553,8 @@ background: #A7A7A7;
 
 .mobile-grabber:active {
     cursor: grabbing;
+}
+.panels{
+    gap:16px
 }
 }
