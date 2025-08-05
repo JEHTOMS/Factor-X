@@ -1288,9 +1288,15 @@ document.addEventListener('DOMContentLoaded', function() {
     // Hide clear button initially
     clearBtn.style.display = 'none';
 
-    // Show/hide clear button on input
+    // Show/hide clear button on input and update character count
     input.addEventListener('input', function() {
       clearBtn.style.display = input.value.length > 0 ? 'flex' : 'none';
+      
+      // Update character count display
+      const charCountElements = document.querySelectorAll('#current-char-count');
+      charCountElements.forEach(element => {
+        element.textContent = input.value.length;
+      });
     });
 
     // Clear input and hide button on click
@@ -1301,6 +1307,12 @@ document.addEventListener('DOMContentLoaded', function() {
       });
       getAllElements('clearbtn').forEach(btn => {
         if (btn) btn.style.display = 'none';
+      });
+      
+      // Reset character count to 0
+      const charCountElements = document.querySelectorAll('#current-char-count');
+      charCountElements.forEach(element => {
+        element.textContent = '0';
       });
       
       input.focus();
@@ -1320,6 +1332,14 @@ document.addEventListener('DOMContentLoaded', function() {
       stopAndCleanupAudio();
       stopMouseDistortion();
     });
+  });
+
+  // Initialize character count on page load
+  const charCountElements = document.querySelectorAll('#current-char-count');
+  const activeInput = getActiveInput();
+  const currentLength = activeInput ? activeInput.value.length : 0;
+  charCountElements.forEach(element => {
+    element.textContent = currentLength;
   });
 });
 

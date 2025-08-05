@@ -99,7 +99,24 @@ align-items: flex-start;
 gap: 32px;
 align-self: stretch;
 }
-
+.overall-input-container{
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    align-self: stretch;
+}
+.char-count{
+     color: #404040;
+    font-size: 12px;
+    display: flex;
+padding: 4px;
+justify-content: flex-end;
+align-items: center;
+gap: 10px;
+border-radius: 6px;
+background: #E7E7E7;
+}
 #input-container{
     display: flex;
 justify-content: space-between;
@@ -554,6 +571,6 @@ background: #A7A7A7;
     cursor: grabbing;
 }
 .panels{
-    gap:16px
+    gap:24px
 }
 }
