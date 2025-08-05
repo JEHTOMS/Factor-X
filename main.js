@@ -390,6 +390,9 @@ async function setupAudio() {
     analyser = audioContext.createAnalyser();
     microphone = audioContext.createMediaStreamSource(stream);
     
+    // Store the stream for later cleanup
+    window.currentAudioStream = stream;
+    
     analyser.fftSize = 256;
     const bufferLength = analyser.frequencyBinCount;
     dataArray = new Uint8Array(bufferLength);
@@ -451,6 +454,49 @@ function stopAudioAnalysis() {
     cancelAnimationFrame(animationFrame);
     animationFrame = null;
   }
+}
+
+// Complete audio cleanup - stops analysis and releases microphone
+function stopAndCleanupAudio() {
+  // Stop the animation frame
+  stopAudioAnalysis();
+  
+  // Stop all audio tracks to turn off the microphone
+  if (window.currentAudioStream) {
+    window.currentAudioStream.getTracks().forEach(track => {
+      track.stop();
+      console.log('Audio track stopped:', track.kind);
+    });
+    window.currentAudioStream = null;
+  }
+  
+  // Disconnect and cleanup audio nodes
+  if (microphone) {
+    microphone.disconnect();
+    microphone = null;
+  }
+  
+  if (analyser) {
+    analyser.disconnect();
+    analyser = null;
+  }
+  
+  // Close audio context
+  if (audioContext && audioContext.state !== 'closed') {
+    audioContext.close().then(() => {
+      console.log('Audio context closed');
+      audioContext = null;
+    }).catch(err => {
+      console.error('Error closing audio context:', err);
+      audioContext = null;
+    });
+  }
+  
+  // Reset audio state
+  isAudioEnabled = false;
+  dataArray = null;
+  
+  console.log('Audio completely stopped and cleaned up');
 }
 
 function updateDistortionWithAudio(audioData) {
@@ -905,7 +951,7 @@ querySelectorAllDual('#ctrls .ctrls-btn').forEach(btn => {
       }
     } else if (buttonType === 'touch') {
       // Enable touch-reactive mode
-      stopAudioAnalysis(); // Stop audio analysis first
+      stopAndCleanupAudio(); // Completely stop audio and release microphone
       isMouseTracking = true;
       
       // Reset to default height to clear any audio effects
@@ -1254,7 +1300,8 @@ document.addEventListener('DOMContentLoaded', function() {
       });
       
       // Stop any ongoing audio or mouse analysis
-      stopAudioAnalysis();
+      stopAndCleanupAudio();
+      stopMouseDistortion();
     });
   });
 });
@@ -1570,6 +1617,66 @@ function initBottomSheet() {
     navContainer.style.height = `${currentHeight}px`;
     navContainer.style.overflow = dragProgress > 0 ? 'hidden' : 'visible';
     
+    // Add subtle rebound effect to nav-container when reaching endpoints
+    if (isFinalized) {
+      if (dragProgress >= 1) {
+        // Fully collapsed - add slight downward rebound
+        // Disable transitions on ALL containers during rebound to prevent any unwanted animation
+        controlsContainers.forEach(container => {
+          container.style.transition = 'none';
+        });
+        // Also disable transitions on nested containers
+        const nestedContainers = navContainer.querySelectorAll('.controls-container');
+        nestedContainers.forEach(container => {
+          container.style.transition = 'none';
+        });
+        
+        navContainer.style.transform = 'translateY(3px)';
+        setTimeout(() => {
+          navContainer.style.transform = 'translateY(0)';
+          // Re-enable transitions after rebound - but only for specific containers
+          controlsContainers.forEach(container => {
+            if (container.id === 'mobile-controls' || container.id === 'intensity') {
+              container.style.transition = '';
+            }
+          });
+          // Keep nested containers without transitions
+          nestedContainers.forEach(container => {
+            container.style.transition = 'none';
+          });
+        }, 150);
+      } else if (dragProgress <= 0) {
+        // Fully expanded - add slight upward rebound
+        // Disable transitions on ALL containers during rebound to prevent any unwanted animation
+        controlsContainers.forEach(container => {
+          container.style.transition = 'none';
+        });
+        // Also disable transitions on nested containers
+        const nestedContainers = navContainer.querySelectorAll('.controls-container');
+        nestedContainers.forEach(container => {
+          container.style.transition = 'none';
+        });
+        
+        navContainer.style.transform = 'translateY(-3px)';
+        setTimeout(() => {
+          navContainer.style.transform = 'translateY(0)';
+          // Re-enable transitions after rebound - but only for specific containers
+          controlsContainers.forEach(container => {
+            if (container.id === 'mobile-controls' || container.id === 'intensity') {
+              container.style.transition = '';
+            }
+          });
+          // Keep nested containers without transitions
+          nestedContainers.forEach(container => {
+            container.style.transition = 'none';
+          });
+        }, 150);
+      }
+    } else {
+      // During drag, no transform on nav-container
+      navContainer.style.transform = 'translateY(0)';
+    }
+    
     // Get the mobile-controls container specifically for row-layout handling
     const mobileControlsContainer = document.getElementById('mobile-controls');
     
@@ -1592,13 +1699,10 @@ function initBottomSheet() {
         return;
       }
       
-      // For mobile-controls container (row layout), apply special handling
+      // For mobile-controls container (row layout), apply standard opacity fade
       if (container.id === 'mobile-controls' || container === mobileControlsContainer) {
         container.style.opacity = controlOpacity;
-        
-        // Smooth translateY that follows an easing curve to prevent jumps
-        const translateY = dragProgress * 10 * easeOutQuart(dragProgress);
-        container.style.transform = `translateY(${translateY}px)`;
+        container.style.transform = 'translateY(0)'; // No transform - let nav-container handle positioning
         
         // Keep containers unmasked with full visibility
         container.style.maxHeight = 'none';
@@ -1758,9 +1862,12 @@ function initBottomSheet() {
     const velocity = dragDistance / Math.max(dragDuration, 1);
     
     // Add smooth transitions for final animation with better easing
-    navContainer.style.transition = 'height 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+    navContainer.style.transition = 'height 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), transform 0.15s ease-out';
     controlsContainers.forEach(container => {
-      container.style.transition = 'opacity 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), max-height 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+      // Only add transitions to top-level containers, not nested ones
+      if (container.id === 'mobile-controls' || container.id === 'intensity') {
+        container.style.transition = 'opacity 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+      }
     });
     
     // Determine final state based on drag distance and velocity
@@ -1793,7 +1900,16 @@ function initBottomSheet() {
     setTimeout(() => {
       navContainer.style.transition = '';
       controlsContainers.forEach(container => {
-        container.style.transition = '';
+        // Only re-enable transitions for top-level containers
+        if (container.id === 'mobile-controls' || container.id === 'intensity') {
+          container.style.transition = '';
+        }
+      });
+      
+      // Ensure nested containers never have transitions
+      const nestedContainers = navContainer.querySelectorAll('.controls-container');
+      nestedContainers.forEach(container => {
+        container.style.transition = 'none';
       });
       
       // Recalculate and set the correct height after transitions to prevent jumps
@@ -1828,9 +1944,12 @@ function initBottomSheet() {
     isCollapsed = !isCollapsed;
     
     // Add smooth transitions for click toggle with better easing
-    navContainer.style.transition = 'height 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+    navContainer.style.transition = 'height 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), transform 0.15s ease-out';
     controlsContainers.forEach(container => {
-      container.style.transition = 'opacity 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), max-height 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+      // Only add transitions to top-level containers
+      if (container.id === 'mobile-controls' || container.id === 'intensity') {
+        container.style.transition = 'opacity 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+      }
     });
     
     if (isCollapsed) {
@@ -1845,7 +1964,16 @@ function initBottomSheet() {
     setTimeout(() => {
       navContainer.style.transition = '';
       controlsContainers.forEach(container => {
-        container.style.transition = '';
+        // Only reset transitions for top-level containers
+        if (container.id === 'mobile-controls' || container.id === 'intensity') {
+          container.style.transition = '';
+        }
+      });
+      
+      // Ensure nested containers never have transitions
+      const nestedContainers = navContainer.querySelectorAll('.controls-container');
+      nestedContainers.forEach(container => {
+        container.style.transition = 'none';
       });
       
       // Recalculate height to prevent jumps after click animation
