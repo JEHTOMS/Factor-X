@@ -1412,6 +1412,10 @@ function initBottomSheet() {
   
   // Measure heights on init and when needed
   function measureHeights() {
+    // Store current visual state to prevent jumps
+    const currentVisualHeight = navContainer.getBoundingClientRect().height;
+    const shouldPreserveHeight = navContainer.style.height !== 'auto';
+    
     // Temporarily ensure all containers are visible to get accurate measurements
     const originalStyles = [];
     controlsContainers.forEach((container, index) => {
@@ -1427,7 +1431,14 @@ function initBottomSheet() {
       container.style.overflow = 'visible';
     });
     
-    // Get full expanded height
+    // Temporarily set height to auto to get natural height, but hide it to prevent flash
+    const originalNavHeight = navContainer.style.height;
+    const originalNavOverflow = navContainer.style.overflow;
+    navContainer.style.height = 'auto';
+    navContainer.style.overflow = 'hidden';
+    navContainer.style.visibility = 'hidden';
+    
+    // Force layout calculation
     initialNavHeight = navContainer.getBoundingClientRect().height;
     
     // For collapsed height calculation, hide the mobile-controls container specifically
@@ -1448,6 +1459,15 @@ function initBottomSheet() {
     });
     
     collapsedNavHeight = navContainer.getBoundingClientRect().height;
+    
+    // Restore visibility and height immediately to prevent flash
+    navContainer.style.visibility = 'visible';
+    if (shouldPreserveHeight) {
+      navContainer.style.height = `${currentVisualHeight}px`;
+    } else {
+      navContainer.style.height = originalNavHeight;
+    }
+    navContainer.style.overflow = originalNavOverflow;
     
     // Restore mobile-controls display
     if (mobileControlsContainer) {
@@ -1475,13 +1495,31 @@ function initBottomSheet() {
   function handleResize() {
     clearTimeout(resizeTimeout);
     resizeTimeout = setTimeout(() => {
+      // Store current state before measuring
+      const wasCollapsed = isCollapsed;
+      
+      // Temporarily remove transitions to prevent jumping during resize
+      navContainer.style.transition = 'none';
+      controlsContainers.forEach(container => {
+        container.style.transition = 'none';
+      });
+      
       measureHeights();
-      // Reapply current state after resize
-      if (isCollapsed) {
+      
+      // Immediately apply the correct state without transitions
+      if (wasCollapsed) {
         updateNavHeight(1, true);
       } else {
         updateNavHeight(0, true);
       }
+      
+      // Re-enable transitions after a frame
+      requestAnimationFrame(() => {
+        navContainer.style.transition = '';
+        controlsContainers.forEach(container => {
+          container.style.transition = '';
+        });
+      });
     }, 150);
   }
   
@@ -1528,15 +1566,9 @@ function initBottomSheet() {
     const currentHeight = initialNavHeight - (heightDiff * dragProgress);
     
     // Apply height to nav container with smooth transition
-    if (dragProgress === 0 && isFinalized) {
-      // Only reset to auto height after drag is complete
-      navContainer.style.height = 'auto';
-      navContainer.style.overflow = 'visible';
-    } else {
-      // Always use interpolated height during dragging for smooth animation
-      navContainer.style.height = `${currentHeight}px`;
-      navContainer.style.overflow = dragProgress > 0 ? 'hidden' : 'visible';
-    }
+    // Avoid jumping by never switching back to 'auto' - always use calculated height
+    navContainer.style.height = `${currentHeight}px`;
+    navContainer.style.overflow = dragProgress > 0 ? 'hidden' : 'visible';
     
     // Get the mobile-controls container specifically for row-layout handling
     const mobileControlsContainer = document.getElementById('mobile-controls');
@@ -1549,7 +1581,7 @@ function initBottomSheet() {
       controlOpacity = Math.max(0, 1 - easeInQuart(fadeProgress));
     }
     
-    // Apply opacity and height adjustments to control containers (except input)
+    // Apply opacity and transform adjustments to control containers (except input)
     controlsContainers.forEach(container => {
       if (container.contains(inputContainer)) {
         // Keep input container always visible and at full opacity
@@ -1564,8 +1596,8 @@ function initBottomSheet() {
       if (container.id === 'mobile-controls' || container === mobileControlsContainer) {
         container.style.opacity = controlOpacity;
         
-        // For row layout, we can also apply a subtle transform for better visual feedback
-        const translateY = dragProgress * 10; // Subtle downward movement
+        // Smooth translateY that follows an easing curve to prevent jumps
+        const translateY = dragProgress * 10 * easeOutQuart(dragProgress);
         container.style.transform = `translateY(${translateY}px)`;
         
         // Keep containers unmasked with full visibility
@@ -1574,12 +1606,14 @@ function initBottomSheet() {
         return;
       }
       
-      // For other containers, apply standard opacity fade
+      // For other containers, apply standard opacity fade with smooth transform reset
       container.style.opacity = controlOpacity;
       
       // Always keep containers unmasked with full visibility
       container.style.maxHeight = 'none';
       container.style.overflow = 'visible';
+      
+      // Ensure smooth transform reset
       container.style.transform = 'translateY(0)';
     });
     
@@ -1761,6 +1795,18 @@ function initBottomSheet() {
       controlsContainers.forEach(container => {
         container.style.transition = '';
       });
+      
+      // Recalculate and set the correct height after transitions to prevent jumps
+      // This ensures we maintain the proper height without layout shifts
+      if (!isCollapsed) {
+        // Force a height recalculation for expanded state
+        const currentFullHeight = navContainer.getBoundingClientRect().height;
+        navContainer.style.height = `${currentFullHeight}px`;
+      } else {
+        // Force a height recalculation for collapsed state
+        const currentCollapsedHeight = navContainer.getBoundingClientRect().height;
+        navContainer.style.height = `${currentCollapsedHeight}px`;
+      }
     }, 400);
     
     // Re-enable interactions and clean up
@@ -1795,12 +1841,21 @@ function initBottomSheet() {
       updateNavHeight(0, true); // Fully expanded and finalized
     }
     
-    // Clean up transitions
+    // Clean up transitions and prevent jumps
     setTimeout(() => {
       navContainer.style.transition = '';
       controlsContainers.forEach(container => {
         container.style.transition = '';
       });
+      
+      // Recalculate height to prevent jumps after click animation
+      if (!isCollapsed) {
+        const currentFullHeight = navContainer.getBoundingClientRect().height;
+        navContainer.style.height = `${currentFullHeight}px`;
+      } else {
+        const currentCollapsedHeight = navContainer.getBoundingClientRect().height;
+        navContainer.style.height = `${currentCollapsedHeight}px`;
+      }
     }, 400);
   });
 }
