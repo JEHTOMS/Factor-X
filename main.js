@@ -1397,9 +1397,14 @@ function initBottomSheet() {
   let isDragging = false;
   let startY = 0;
   let currentY = 0;
+  let dragStartTime = 0;
+  let hasMovedEnough = false; // Track if user has moved enough to be considered "dragging"
   let isCollapsed = false;
   let lastFrameTime = 0;
   const frameDelay = 16; // ~60fps (16ms between frames)
+  const DRAG_THRESHOLD = 15; // Minimum pixels to move before considering it a drag
+  const COLLAPSE_THRESHOLD = 100; // Reduced from 120 for row layout (less height difference)
+  const VELOCITY_THRESHOLD = 0.3; // Velocity threshold for quick gestures
   
   // Calculate initial heights for smooth interpolation
   let initialNavHeight = 0;
@@ -1425,28 +1430,63 @@ function initBottomSheet() {
     // Get full expanded height
     initialNavHeight = navContainer.getBoundingClientRect().height;
     
-    // Temporarily hide all controls except input to get collapsed height
+    // For collapsed height calculation, hide the mobile-controls container specifically
+    // Since mobile-controls now uses row layout, hiding it provides meaningful height reduction
+    const mobileControlsContainer = document.getElementById('mobile-controls');
+    const originalMobileControlsDisplay = mobileControlsContainer?.style.display || '';
+    
+    // Hide mobile-controls (which contains both Controls and Distortion sections)
+    if (mobileControlsContainer) {
+      mobileControlsContainer.style.display = 'none';
+    }
+    
+    // Also hide any other control containers except input
     controlsContainers.forEach(container => {
       if (container.contains(inputContainer)) return; // Keep input container
+      if (container.id === 'mobile-controls') return; // Already handled above
       container.style.display = 'none';
     });
     
     collapsedNavHeight = navContainer.getBoundingClientRect().height;
     
-    // Restore original styles
+    // Restore mobile-controls display
+    if (mobileControlsContainer) {
+      mobileControlsContainer.style.display = originalMobileControlsDisplay;
+    }
+    
+    // Restore original styles for other containers
     controlsContainers.forEach((container, index) => {
       container.style.display = originalStyles[index].display;
       container.style.opacity = originalStyles[index].opacity;
       container.style.height = originalStyles[index].height;
       container.style.overflow = originalStyles[index].overflow;
     });
+    
+    // Log height difference for debugging (can be removed in production)
+    const heightDifference = initialNavHeight - collapsedNavHeight;
+    console.log(`Bottom sheet heights - Expanded: ${initialNavHeight}px, Collapsed: ${collapsedNavHeight}px, Difference: ${heightDifference}px`);
   }
   
   // Initial measurement
   measureHeights();
   
+  // Debounced resize handler for better performance
+  let resizeTimeout;
+  function handleResize() {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+      measureHeights();
+      // Reapply current state after resize
+      if (isCollapsed) {
+        updateNavHeight(1, true);
+      } else {
+        updateNavHeight(0, true);
+      }
+    }, 150);
+  }
+  
   // Re-measure on window resize
-  window.addEventListener('resize', measureHeights);
+  window.addEventListener('resize', handleResize);
   
   // Update result container height for real-time scaling
   function updateResultContainerHeight(dragProgress) {
@@ -1457,7 +1497,9 @@ function initBottomSheet() {
     const baseHeight = window.innerWidth <= 599 ? 300 : 500;
     
     // Calculate additional height based on how much of the nav is hidden
-    const extraHeight = dragProgress * 200;
+    // Adjusted for row layout - less dramatic height changes but still noticeable
+    const heightDifference = initialNavHeight - collapsedNavHeight;
+    const extraHeight = dragProgress * Math.min(heightDifference * 0.8, 150); // Cap at 150px
     
     const newHeight = baseHeight + extraHeight;
     resultContainer.style.height = `${newHeight}px`;
@@ -1472,6 +1514,15 @@ function initBottomSheet() {
   
   // Smoothly update nav container height and control visibility
   function updateNavHeight(dragProgress, isFinalized = false) {
+    // Use requestAnimationFrame for smoother updates
+    if (!isFinalized) {
+      requestAnimationFrame(() => applyHeightUpdate(dragProgress, isFinalized));
+    } else {
+      applyHeightUpdate(dragProgress, isFinalized);
+    }
+  }
+  
+  function applyHeightUpdate(dragProgress, isFinalized = false) {
     // Interpolate between initial and collapsed heights
     const heightDiff = initialNavHeight - collapsedNavHeight;
     const currentHeight = initialNavHeight - (heightDiff * dragProgress);
@@ -1487,12 +1538,15 @@ function initBottomSheet() {
       navContainer.style.overflow = dragProgress > 0 ? 'hidden' : 'visible';
     }
     
-    // Fade out controls progressively as we approach collapsed state
-    // Start fading when 30% dragged, fully hidden at 80% dragged
+    // Get the mobile-controls container specifically for row-layout handling
+    const mobileControlsContainer = document.getElementById('mobile-controls');
+    
+    // Improved fade curve for more natural feel
+    // Start fading when 20% dragged, fully hidden at 75% dragged
     let controlOpacity = 1;
-    if (dragProgress > 0.3) {
-      const fadeProgress = (dragProgress - 0.3) / 0.5; // 0.3 to 0.8 mapped to 0 to 1
-      controlOpacity = Math.max(0, 1 - fadeProgress);
+    if (dragProgress > 0.2) {
+      const fadeProgress = (dragProgress - 0.2) / 0.55; // 0.2 to 0.75 mapped to 0 to 1
+      controlOpacity = Math.max(0, 1 - easeInQuart(fadeProgress));
     }
     
     // Apply opacity and height adjustments to control containers (except input)
@@ -1506,7 +1560,21 @@ function initBottomSheet() {
         return;
       }
       
-      // For other containers, only apply opacity fade - no masking
+      // For mobile-controls container (row layout), apply special handling
+      if (container.id === 'mobile-controls' || container === mobileControlsContainer) {
+        container.style.opacity = controlOpacity;
+        
+        // For row layout, we can also apply a subtle transform for better visual feedback
+        const translateY = dragProgress * 10; // Subtle downward movement
+        container.style.transform = `translateY(${translateY}px)`;
+        
+        // Keep containers unmasked with full visibility
+        container.style.maxHeight = 'none';
+        container.style.overflow = 'visible';
+        return;
+      }
+      
+      // For other containers, apply standard opacity fade
       container.style.opacity = controlOpacity;
       
       // Always keep containers unmasked with full visibility
@@ -1519,11 +1587,19 @@ function initBottomSheet() {
     updateResultContainerHeight(dragProgress);
   }
   
+  // Easing function for fade in
+  function easeInQuart(t) {
+    return t * t * t * t;
+  }
+  
   function getTouchY(e) {
     return e.touches ? e.touches[0].clientY : e.clientY;
   }
   
   function handleDragStart(e) {
+    // Prevent multiple simultaneous drags
+    if (isDragging) return;
+    
     // Don't start drag if the target is an input or button
     const target = e.target;
     if (target.tagName === 'INPUT' || target.tagName === 'BUTTON' || 
@@ -1531,68 +1607,152 @@ function initBottomSheet() {
       return;
     }
     
-    isDragging = true;
-    startY = getTouchY(e);
+    // Prevent default to avoid conflicts
+    e.preventDefault();
     
-    mobileNav.style.transition = 'none';
+    isDragging = true;
+    hasMovedEnough = false; // Reset movement tracking
+    startY = getTouchY(e);
+    currentY = startY;
+    dragStartTime = performance.now(); // Track when drag started
+    
+    // Disable transitions and prevent text selection
+    navContainer.style.transition = 'none';
+    controlsContainers.forEach(container => {
+      container.style.transition = 'none';
+    });
     document.body.style.userSelect = 'none';
+    
+    // Clean up any existing listeners first (prevents duplicate listeners)
+    cleanupEventListeners();
     
     // Attach move and end listeners to document for both mouse and touch
     if (e.type === 'mousedown') {
-      document.addEventListener('mousemove', handleDragMove);
-      document.addEventListener('mouseup', handleDragEnd);
+      document.addEventListener('mousemove', handleDragMove, { passive: false });
+      document.addEventListener('mouseup', handleDragEnd, { passive: false });
+      // Prevent context menu on long mouse press
+      document.addEventListener('contextmenu', preventContextMenu, { passive: false });
     } else if (e.type === 'touchstart') {
       document.addEventListener('touchmove', handleDragMove, { passive: false });
-      document.addEventListener('touchend', handleDragEnd);
+      document.addEventListener('touchend', handleDragEnd, { passive: false });
+      document.addEventListener('touchcancel', handleDragEnd, { passive: false });
     }
-    e.preventDefault();
+  }
+  
+  // Helper function to prevent context menu during drag
+  function preventContextMenu(e) {
+    if (isDragging) {
+      e.preventDefault();
+    }
+  }
+  
+  // Clean up event listeners
+  function cleanupEventListeners() {
+    document.removeEventListener('mousemove', handleDragMove);
+    document.removeEventListener('mouseup', handleDragEnd);
+    document.removeEventListener('touchmove', handleDragMove);
+    document.removeEventListener('touchend', handleDragEnd);
+    document.removeEventListener('touchcancel', handleDragEnd);
+    document.removeEventListener('contextmenu', preventContextMenu);
   }
   
   function handleDragMove(e) {
     if (!isDragging) return;
     
+    // Prevent default scroll/zoom behaviors
     e.preventDefault();
+    
+    currentY = getTouchY(e);
+    const deltaY = currentY - startY;
+    
+    // Check if user has moved enough to be considered "dragging"
+    if (!hasMovedEnough && Math.abs(deltaY) < DRAG_THRESHOLD) {
+      return; // Don't start visual feedback until minimum movement
+    }
+    
+    // User has moved enough, start visual feedback
+    hasMovedEnough = true;
     
     // Throttle updates to ~60fps for smoother performance
     const now = performance.now();
     if (now - lastFrameTime < frameDelay) return;
     lastFrameTime = now;
     
-    currentY = getTouchY(e);
-    const deltaY = currentY - startY;
-    
     // Calculate drag progress (positive deltaY = dragging down = collapsing)
-    const maxDragDistance = 200; // Maximum drag distance before fully collapsed
-    const dragProgress = Math.max(0, Math.min(deltaY / maxDragDistance, 1)); // 0 to 1
+    const maxDragDistance = 200; // Reduced from 250 to account for smaller height difference in row layout
+    let dragProgress = Math.max(0, Math.min(deltaY / maxDragDistance, 1)); // 0 to 1
+    
+    // Add subtle easing for more natural feel
+    dragProgress = easeOutQuart(dragProgress);
     
     // Apply smooth height-based collapse
     updateNavHeight(dragProgress);
   }
   
+  // Easing function for smoother animation
+  function easeOutQuart(t) {
+    return 1 - Math.pow(1 - t, 4);
+  }
+  
   function handleDragEnd(e) {
     if (!isDragging) return;
     
+    // Prevent any default behaviors
+    e.preventDefault();
+    
     isDragging = false;
     const deltaY = currentY - startY;
-    const threshold = 80; // Minimum drag distance to trigger collapse (40% of maxDragDistance)
+    const dragDistance = Math.abs(deltaY);
+    const dragDuration = performance.now() - dragStartTime;
     
-    // Add smooth transitions for final animation
-    navContainer.style.transition = 'height 0.3s ease-out';
+    // If user didn't move enough, treat as a tap - don't change state
+    if (!hasMovedEnough || dragDistance < DRAG_THRESHOLD) {
+      // Reset visual state to current state without changing collapsed status
+      if (isCollapsed) {
+        updateNavHeight(1, true);
+      } else {
+        updateNavHeight(0, true);
+      }
+      
+      // Re-enable interactions and clean up
+      document.body.style.userSelect = '';
+      cleanupEventListeners();
+      return;
+    }
+    
+    // Calculate velocity (pixels per millisecond)
+    const velocity = dragDistance / Math.max(dragDuration, 1);
+    
+    // Add smooth transitions for final animation with better easing
+    navContainer.style.transition = 'height 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
     controlsContainers.forEach(container => {
-      container.style.transition = 'opacity 0.3s ease-out, max-height 0.3s ease-out, transform 0.3s ease-out';
+      container.style.transition = 'opacity 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), max-height 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
     });
     
-    // Determine final state based on drag distance
-    if (deltaY > threshold) {
+    // Determine final state based on drag distance and velocity
+    // Adjusted thresholds for row layout (smaller height differences)
+    const shouldCollapse = (deltaY > COLLAPSE_THRESHOLD) || 
+                          (deltaY > 50 && velocity > VELOCITY_THRESHOLD); // Reduced from 60
+    const shouldExpand = (deltaY < -COLLAPSE_THRESHOLD) || 
+                        (deltaY < -50 && velocity > VELOCITY_THRESHOLD); // Reduced from -60
+    
+    if (shouldCollapse && !isCollapsed) {
       // Dragged down enough - collapse to show only input
       isCollapsed = true;
       mobileNav.classList.add('collapsed');
       updateNavHeight(1, true); // Fully collapsed and finalized
-    } else {
-      // Not dragged enough or dragged up - expand to full height
+    } else if (shouldExpand && isCollapsed) {
+      // Dragged up enough - expand to full height
       isCollapsed = false;
       mobileNav.classList.remove('collapsed');
       updateNavHeight(0, true); // Fully expanded and finalized
+    } else {
+      // Not dragged enough - return to current state
+      if (isCollapsed) {
+        updateNavHeight(1, true);
+      } else {
+        updateNavHeight(0, true);
+      }
     }
     
     // Clean up transitions after animation completes
@@ -1601,31 +1761,30 @@ function initBottomSheet() {
       controlsContainers.forEach(container => {
         container.style.transition = '';
       });
-    }, 300);
+    }, 400);
     
-    // Re-enable interactions
+    // Re-enable interactions and clean up
     document.body.style.userSelect = '';
-    
-    // Clean up event listeners
-    document.removeEventListener('mousemove', handleDragMove);
-    document.removeEventListener('mouseup', handleDragEnd);
-    document.removeEventListener('touchmove', handleDragMove);
-    document.removeEventListener('touchend', handleDragEnd);
+    cleanupEventListeners();
   }
   
-  // Initialize drag listeners on entire mobile nav and grabber
-  mobileNav.addEventListener('touchstart', handleDragStart, { passive: true });
+  // Initialize drag listeners - use consistent passive: false for better control
+  mobileNav.addEventListener('touchstart', handleDragStart, { passive: false });
   mobileNav.addEventListener('mousedown', handleDragStart);
   mobileGrabber.addEventListener('touchstart', handleDragStart, { passive: false });
   mobileGrabber.addEventListener('mousedown', handleDragStart);
   // Fallback: toggle collapse/expand on grabber click
-  mobileGrabber.addEventListener('click', () => {
+  mobileGrabber.addEventListener('click', (e) => {
+    // Prevent if this was part of a drag gesture or if user moved significantly
+    if (hasMovedEnough || Math.abs(currentY - startY) > DRAG_THRESHOLD) return;
+    
+    e.preventDefault();
     isCollapsed = !isCollapsed;
     
-    // Add smooth transitions for click toggle
-    navContainer.style.transition = 'height 0.3s ease-out';
+    // Add smooth transitions for click toggle with better easing
+    navContainer.style.transition = 'height 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
     controlsContainers.forEach(container => {
-      container.style.transition = 'opacity 0.3s ease-out, max-height 0.3s ease-out, transform 0.3s ease-out';
+      container.style.transition = 'opacity 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), max-height 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
     });
     
     if (isCollapsed) {
@@ -1642,6 +1801,6 @@ function initBottomSheet() {
       controlsContainers.forEach(container => {
         container.style.transition = '';
       });
-    }, 300);
+    }, 400);
   });
 }
