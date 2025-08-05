@@ -505,10 +505,6 @@ height: 44px;
     border-radius: 24px 24px 0px 0px;
     border-right: 0px solid #E7E7E7;
     transition: all 0.3s ease-out;
-    /* Hardware acceleration for smooth mask and height animations */
-    will-change: mask-image, height;
-    backface-visibility: hidden;
-    transform: translate3d(0, 0, 0); /* Force hardware acceleration */
 }
 
 /* Collapsed state for mobile nav */
