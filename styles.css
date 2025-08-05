@@ -418,10 +418,9 @@ overflow: hidden; /* Prevent content overflow */
     width: 100%;
     max-width: 100%; /* Prevent overflow */
     box-sizing: border-box; /* Include padding in width calculation */
-    /* Hardware acceleration for smooth mask and transform animations */
-    will-change: mask-image, transform, opacity;
+    /* Hardware acceleration for smooth opacity transitions */
+    will-change: opacity;
     backface-visibility: hidden;
-    transform: translate3d(0, 0, 0); /* Force hardware acceleration */
 }
 #mobile-controls {
     display: flex;
@@ -506,6 +505,10 @@ height: 44px;
     border-radius: 24px 24px 0px 0px;
     border-right: 0px solid #E7E7E7;
     transition: all 0.3s ease-out;
+    /* Hardware acceleration for smooth mask and height animations */
+    will-change: mask-image, height;
+    backface-visibility: hidden;
+    transform: translate3d(0, 0, 0); /* Force hardware acceleration */
 }
 
 /* Collapsed state for mobile nav */

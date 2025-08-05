@@ -1387,11 +1387,12 @@ document.addEventListener('DOMContentLoaded', function() {
 // Bottom sheet interaction for mobile navigation
 function initBottomSheet() {
   const mobileNav = document.getElementById('mobile-nav');
-  // Target the specific control containers, not the entire panels div
+  const navContainer = mobileNav?.querySelector('.nav-container');
+  const inputContainer = mobileNav?.querySelector('#input-container');
   const controlsContainers = mobileNav?.querySelectorAll('.controls-container');
   const mobileGrabber = mobileNav?.querySelector('.mobile-grabber');
   
-  if (!mobileNav || !controlsContainers || controlsContainers.length === 0 || !mobileGrabber) return;
+  if (!mobileNav || !navContainer || !inputContainer || !controlsContainers || controlsContainers.length === 0 || !mobileGrabber) return;
   
   let isDragging = false;
   let startY = 0;
@@ -1400,27 +1401,122 @@ function initBottomSheet() {
   let lastFrameTime = 0;
   const frameDelay = 16; // ~60fps (16ms between frames)
   
+  // Calculate initial heights for smooth interpolation
+  let initialNavHeight = 0;
+  let collapsedNavHeight = 0;
+  
+  // Measure heights on init and when needed
+  function measureHeights() {
+    // Temporarily ensure all containers are visible to get accurate measurements
+    const originalStyles = [];
+    controlsContainers.forEach((container, index) => {
+      originalStyles[index] = {
+        display: container.style.display,
+        opacity: container.style.opacity,
+        height: container.style.height,
+        overflow: container.style.overflow
+      };
+      container.style.display = '';
+      container.style.opacity = '1';
+      container.style.height = 'auto';
+      container.style.overflow = 'visible';
+    });
+    
+    // Get full expanded height
+    initialNavHeight = navContainer.getBoundingClientRect().height;
+    
+    // Temporarily hide all controls except input to get collapsed height
+    controlsContainers.forEach(container => {
+      if (container.contains(inputContainer)) return; // Keep input container
+      container.style.display = 'none';
+    });
+    
+    collapsedNavHeight = navContainer.getBoundingClientRect().height;
+    
+    // Restore original styles
+    controlsContainers.forEach((container, index) => {
+      container.style.display = originalStyles[index].display;
+      container.style.opacity = originalStyles[index].opacity;
+      container.style.height = originalStyles[index].height;
+      container.style.overflow = originalStyles[index].overflow;
+    });
+  }
+  
+  // Initial measurement
+  measureHeights();
+  
+  // Re-measure on window resize
+  window.addEventListener('resize', measureHeights);
+  
   // Update result container height for real-time scaling
   function updateResultContainerHeight(dragProgress) {
-    const resultContainer = document.getElementById('result');
+    const resultContainer = document.querySelector('.result-container');
     if (!resultContainer) return;
     
-    // Base height for mobile (smaller to start with)
+    // Base height for mobile
     const baseHeight = window.innerWidth <= 599 ? 300 : 500;
     
     // Calculate additional height based on how much of the nav is hidden
-    // When dragProgress = 1 (fully hidden), add significant extra height
-    const extraHeight = dragProgress * 200; // Up to 200px extra height
+    const extraHeight = dragProgress * 200;
     
     const newHeight = baseHeight + extraHeight;
     resultContainer.style.height = `${newHeight}px`;
     
-    // Trigger redraw of distortion if active using requestAnimationFrame for smooth updates
+    // Trigger redraw of distortion if active
     if (window.currentDistortionType && window.distortedFont) {
       requestAnimationFrame(() => {
         drawText(window.currentDistortionType);
       });
     }
+  }
+  
+  // Smoothly update nav container height and control visibility
+  function updateNavHeight(dragProgress, isFinalized = false) {
+    // Interpolate between initial and collapsed heights
+    const heightDiff = initialNavHeight - collapsedNavHeight;
+    const currentHeight = initialNavHeight - (heightDiff * dragProgress);
+    
+    // Apply height to nav container with smooth transition
+    if (dragProgress === 0 && isFinalized) {
+      // Only reset to auto height after drag is complete
+      navContainer.style.height = 'auto';
+      navContainer.style.overflow = 'visible';
+    } else {
+      // Always use interpolated height during dragging for smooth animation
+      navContainer.style.height = `${currentHeight}px`;
+      navContainer.style.overflow = 'visible'; // Keep content visible, no masking
+    }
+    
+    // Fade out controls progressively as we approach collapsed state
+    // Start fading when 30% dragged, fully hidden at 80% dragged
+    let controlOpacity = 1;
+    if (dragProgress > 0.3) {
+      const fadeProgress = (dragProgress - 0.3) / 0.5; // 0.3 to 0.8 mapped to 0 to 1
+      controlOpacity = Math.max(0, 1 - fadeProgress);
+    }
+    
+    // Apply opacity and height adjustments to control containers (except input)
+    controlsContainers.forEach(container => {
+      if (container.contains(inputContainer)) {
+        // Keep input container always visible and at full opacity
+        container.style.opacity = '1';
+        container.style.transform = 'translateY(0)';
+        container.style.maxHeight = 'none';
+        container.style.overflow = 'visible';
+        return;
+      }
+      
+      // For other containers, only apply opacity fade - no masking
+      container.style.opacity = controlOpacity;
+      
+      // Always keep containers unmasked with full visibility
+      container.style.maxHeight = 'none';
+      container.style.overflow = 'visible';
+      container.style.transform = 'translateY(0)';
+    });
+    
+    // Update result container height
+    updateResultContainerHeight(dragProgress);
   }
   
   function getTouchY(e) {
@@ -1438,7 +1534,12 @@ function initBottomSheet() {
     isDragging = true;
     startY = getTouchY(e);
     
-    mobileNav.style.transition = 'none';
+    // Disable transitions for immediate drag response
+    navContainer.style.transition = 'none';
+    controlsContainers.forEach(container => {
+      container.style.transition = 'none';
+    });
+    
     document.body.style.userSelect = 'none';
     
     // Attach move and end listeners to document for both mouse and touch
@@ -1450,6 +1551,7 @@ function initBottomSheet() {
       document.addEventListener('touchend', handleDragEnd);
     }
     e.preventDefault();
+    e.stopPropagation(); // Prevent event bubbling
   }
   
   function handleDragMove(e) {
@@ -1465,37 +1567,12 @@ function initBottomSheet() {
     currentY = getTouchY(e);
     const deltaY = currentY - startY;
     
-    // Calculate how much of the mobile nav should be visible
-    // Positive deltaY = dragging down = hiding nav
-    const maxDragDistance = 200; // Maximum drag distance before fully hidden
+    // Calculate drag progress (positive deltaY = dragging down = collapsing)
+    const maxDragDistance = 200; // Maximum drag distance before fully collapsed
     const dragProgress = Math.max(0, Math.min(deltaY / maxDragDistance, 1)); // 0 to 1
     
-    // Use CSS mask to create smooth reveal/hide animation
-    // Calculate mask position - higher percentage means more revealed
-    const maskRevealPercentage = Math.max(0, (1 - dragProgress) * 100);
-    
-    // Apply mask animation to control containers for smooth collapse effect
-    controlsContainers.forEach(container => {
-      // Create a linear gradient mask that reveals from bottom to top
-      container.style.maskImage = `linear-gradient(to top, transparent ${100 - maskRevealPercentage}%, black ${100 - maskRevealPercentage + 10}%, black 100%)`;
-      container.style.webkitMaskImage = `linear-gradient(to top, transparent ${100 - maskRevealPercentage}%, black ${100 - maskRevealPercentage + 10}%, black 100%)`;
-      
-      // Also apply transform for additional smoothness
-      const translateY = dragProgress * 20; // Slight upward movement
-      container.style.transform = `translateY(-${translateY}px)`;
-      
-      // Hide containers when mostly collapsed to allow nav to shrink
-      if (dragProgress > 0.8) {
-        container.style.display = 'none';
-        mobileNav.classList.add('collapsed');
-      } else {
-        container.style.display = '';
-        mobileNav.classList.remove('collapsed');
-      }
-    });
-    
-    // Real-time distortion path scaling - adjust result container height
-    updateResultContainerHeight(dragProgress);
+    // Apply smooth height-based collapse
+    updateNavHeight(dragProgress);
   }
   
   function handleDragEnd(e) {
@@ -1505,58 +1582,44 @@ function initBottomSheet() {
     const deltaY = currentY - startY;
     const threshold = 80; // Minimum drag distance to trigger collapse (40% of maxDragDistance)
     
-    // Re-enable transitions for smooth snap animation with mask support
+    // Add smooth transitions for final animation
+    navContainer.style.transition = 'height 0.3s ease-out';
     controlsContainers.forEach(container => {
-      container.style.transition = 'mask-size 0.3s ease-out, -webkit-mask-size 0.3s ease-out, transform 0.3s ease-out';
+      container.style.transition = 'opacity 0.3s ease-out, max-height 0.3s ease-out, transform 0.3s ease-out';
     });
     
     // Determine final state based on drag distance
     if (deltaY > threshold) {
-      // Dragged down enough - collapse with mask animation
+      // Dragged down enough - collapse to show only input
       isCollapsed = true;
       mobileNav.classList.add('collapsed');
-      controlsContainers.forEach(container => {
-        // Animate mask to fully hide content
-        container.style.maskImage = `linear-gradient(to top, transparent 100%, black 100%)`;
-        container.style.webkitMaskImage = `linear-gradient(to top, transparent 100%, black 100%)`;
-        container.style.transform = `translateY(-20px)`;
-        
-        // Hide after mask animation completes
-        setTimeout(() => {
-          container.style.display = 'none';
-        }, 300);
-      });
-      // Set final expanded distortion path height
-      updateResultContainerHeight(1);
-    } else {
-      // Not dragged enough or dragged up - expand with mask animation
+      updateNavHeight(1, true); // Fully collapsed and finalized
+    } else if (deltaY < -threshold) {
+      // Dragged up enough - expand to full height
       isCollapsed = false;
       mobileNav.classList.remove('collapsed');
-      controlsContainers.forEach(container => {
-        container.style.display = ''; // Show first to restore layout
-        // Animate mask to fully reveal content
-        container.style.maskImage = `linear-gradient(to top, transparent 0%, black 10%, black 100%)`;
-        container.style.webkitMaskImage = `linear-gradient(to top, transparent 0%, black 10%, black 100%)`;
-        container.style.transform = `translateY(0px)`;
-      });
-      // Reset distortion path to normal height
-      updateResultContainerHeight(0);
+      updateNavHeight(0, true); // Fully expanded and finalized
+    } else {
+      // Not dragged enough in either direction - return to current state
+      if (isCollapsed) {
+        updateNavHeight(1, true); // Stay collapsed
+      } else {
+        updateNavHeight(0, true); // Stay expanded
+      }
     }
     
-    // Clean up mask and transform styles after animation completes
+    // Clean up transitions after animation completes
     setTimeout(() => {
+      navContainer.style.transition = '';
       controlsContainers.forEach(container => {
         container.style.transition = '';
-        container.style.maskImage = '';
-        container.style.webkitMaskImage = '';
-        container.style.transform = '';
       });
     }, 300);
     
     // Re-enable interactions
     document.body.style.userSelect = '';
     
-    // Clean up mouse events
+    // Clean up event listeners
     document.removeEventListener('mousemove', handleDragMove);
     document.removeEventListener('mouseup', handleDragEnd);
     document.removeEventListener('touchmove', handleDragMove);
@@ -1572,46 +1635,25 @@ function initBottomSheet() {
   mobileGrabber.addEventListener('click', () => {
     isCollapsed = !isCollapsed;
     
-    // Add smooth mask transitions for click toggle
+    // Add smooth transitions for click toggle
+    navContainer.style.transition = 'height 0.3s ease-out';
     controlsContainers.forEach(container => {
-      container.style.transition = 'mask-size 0.3s ease-out, -webkit-mask-size 0.3s ease-out, transform 0.3s ease-out';
+      container.style.transition = 'opacity 0.3s ease-out, max-height 0.3s ease-out, transform 0.3s ease-out';
     });
     
     if (isCollapsed) {
       mobileNav.classList.add('collapsed');
-      controlsContainers.forEach(container => {
-        // Animate mask to fully hide content
-        container.style.maskImage = `linear-gradient(to top, transparent 100%, black 100%)`;
-        container.style.webkitMaskImage = `linear-gradient(to top, transparent 100%, black 100%)`;
-        container.style.transform = `translateY(-20px)`;
-        
-        // Hide after mask animation completes
-        setTimeout(() => {
-          container.style.display = 'none';
-        }, 300);
-      });
-      // Set final expanded distortion path height
-      updateResultContainerHeight(1);
+      updateNavHeight(1, true); // Fully collapsed and finalized
     } else {
       mobileNav.classList.remove('collapsed');
-      controlsContainers.forEach(container => {
-        container.style.display = '';
-        // Animate mask to fully reveal content
-        container.style.maskImage = `linear-gradient(to top, transparent 0%, black 10%, black 100%)`;
-        container.style.webkitMaskImage = `linear-gradient(to top, transparent 0%, black 10%, black 100%)`;
-        container.style.transform = `translateY(0px)`;
-      });
-      // Reset distortion path to normal height
-      updateResultContainerHeight(0);
+      updateNavHeight(0, true); // Fully expanded and finalized
     }
     
-    // Clean up mask and transform styles after animation completes
+    // Clean up transitions
     setTimeout(() => {
+      navContainer.style.transition = '';
       controlsContainers.forEach(container => {
         container.style.transition = '';
-        container.style.maskImage = '';
-        container.style.webkitMaskImage = '';
-        container.style.transform = '';
       });
     }, 300);
   });
