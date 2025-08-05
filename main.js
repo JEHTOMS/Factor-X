@@ -1,5 +1,55 @@
 // --- Font loading with opentype.js for div-based text distortion ---
 
+// Helper function to get element by ID, checking both desktop and mobile versions
+function getElement(id) {
+  const desktop = document.getElementById(id);
+  const mobile = document.getElementById('md-' + id);
+  return desktop || mobile;
+}
+
+// Helper function to get all elements (both desktop and mobile) by ID
+function getAllElements(id) {
+  const elements = [];
+  const desktop = document.getElementById(id);
+  const mobile = document.getElementById('md-' + id);
+  if (desktop) elements.push(desktop);
+  if (mobile) elements.push(mobile);
+  return elements;
+}
+
+// Helper function to query selector with both desktop and mobile versions
+function querySelectorDual(selector) {
+  const desktop = document.querySelector(selector);
+  const mobileSelector = selector.replace('#ctrls', '#md-ctrls').replace('#distorts', '#md-distorts');
+  const mobile = document.querySelector(mobileSelector);
+  return desktop || mobile;
+}
+
+// Helper function to query all selectors (both desktop and mobile)
+function querySelectorAllDual(selector) {
+  const elements = [];
+  const desktop = document.querySelectorAll(selector);
+  const mobileSelector = selector.replace('#ctrls', '#md-ctrls').replace('#distorts', '#md-distorts');
+  const mobile = document.querySelectorAll(mobileSelector);
+  elements.push(...desktop, ...mobile);
+  return elements;
+}
+
+// Helper function to get the active input that has content
+function getActiveInput() {
+  const nameInputs = getAllElements('name-input');
+  
+  // Find which input has content
+  for (const input of nameInputs) {
+    if (input && input.value) {
+      return input;
+    }
+  }
+  
+  // If no input has content, return the first available input
+  return nameInputs.length > 0 ? nameInputs[0] : null;
+}
+
 let loadedFont = null;
 let audioContext = null;
 let analyser = null;
@@ -23,10 +73,31 @@ const baseHeights = {
 
 // Get current sensitivity from slider (1-5, where 5 = highest sensitivity)
 function getSensitivity() {
-  // Find the current slider value by checking active bits
-  const activeBits = document.querySelectorAll('.range-bits.active');
+  // Check if we're on mobile
+  const isMobile = window.innerWidth <= 768;
+  
+  let activeBits = [];
+  
+  if (isMobile) {
+    // For mobile, look specifically in the mobile nav
+    activeBits = document.querySelectorAll('#mobile-nav .range-bits.active');
+    
+    // If mobile nav isn't found, try the general approach
+    if (activeBits.length === 0) {
+      activeBits = document.querySelectorAll('.range-bits.active');
+    }
+  } else {
+    // For desktop, look specifically in the desktop nav
+    activeBits = document.querySelectorAll('#desktop-nav .range-bits.active');
+    
+    // If desktop nav isn't found, try the general approach
+    if (activeBits.length === 0) {
+      activeBits = document.querySelectorAll('.range-bits.active');
+    }
+  }
+  
   const sensitivity = activeBits.length; // 1-5 scale
-  return sensitivity === 0 ? 1 : sensitivity; // Minimum sensitivity of 1
+  return sensitivity === 0 ? 3 : sensitivity; // Default to middle sensitivity if none found
 }
 
 // Calculate sensitivity multiplier (higher sensitivity = lower threshold needed)
@@ -40,7 +111,13 @@ function getSensitivityMultiplier() {
 // Calculate responsive font size based on screen width
 function getResponsiveFontSize() {
   const screenWidth = window.innerWidth;
-  let fontSize = 200; // Base font size
+  
+  // Mobile devices: use smaller font size to prevent layout jumping
+  if (screenWidth <= 768) {
+    return 120; // Smaller font size for mobile
+  }
+  
+  let fontSize = 200; // Base font size for desktop
   
   if (screenWidth > 1440) {
     // Scale font size for larger screens
@@ -53,11 +130,55 @@ function getResponsiveFontSize() {
   return fontSize;
 }
 
+// Calculate text scale factor to fit within container
+function calculateTextScale() {
+  const nameInput = getActiveInput();
+  const text = nameInput ? nameInput.value : '';
+  if (!text) return 1;
+  
+  const distortionPath = document.querySelector('.distortion-path');
+  if (!distortionPath) return 1;
+  
+  // Get container width and subtract padding (24px on each side = 48px total)
+  const containerWidth = distortionPath.getBoundingClientRect().width - 48;
+  if (containerWidth <= 0) return 1;
+  
+  const fontSize = getResponsiveFontSize();
+  let totalWidth = 0;
+  
+  // Calculate total width of all characters
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    
+    if (char === ' ') {
+      totalWidth += 40; // Space width
+    } else {
+      const glyph = loadedFont.charToGlyph(char);
+      const bounds = glyph.getBoundingBox();
+      const scale = fontSize / loadedFont.unitsPerEm;
+      const naturalWidth = (bounds.x2 - bounds.x1) * scale;
+      const paddedWidth = naturalWidth + 4; // Add padding
+      totalWidth += paddedWidth;
+    }
+  }
+  
+  // Add gap space between characters (0.676px per gap)
+  const gaps = Math.max(0, text.length - 1) * 0.676;
+  totalWidth += gaps;
+  
+  // If text is wider than container, calculate scale factor
+  if (totalWidth > containerWidth) {
+    return containerWidth / totalWidth;
+  }
+  
+  return 1; // No scaling needed
+}
+
 window.addEventListener('DOMContentLoaded', () => {
   console.log('DOMContentLoaded fired - Setting up div-based text distortion');
   
-  // Use the locally provided ausano-bold.otf font file
-  const fontUrl = './Assets-root/Ausano-Bold.otf';
+  // Use the locally provided WiseSans.otf font file
+  const fontUrl = './Assets-root/WiseSans.otf';
 
   opentype.load(fontUrl, function(err, font) {
     if (err) {
@@ -68,30 +189,55 @@ window.addEventListener('DOMContentLoaded', () => {
     console.log('Font loaded successfully:', font.familyName);
     loadedFont = font;
     
-    // Set up input listener
-    const nameInput = document.getElementById('name-input');
-    if (nameInput) {
-      nameInput.addEventListener('input', updateTextDistortion);
-      // Initial render if there's already text
-      if (nameInput.value) {
-        updateTextDistortion();
+    // Set up input listener for both desktop and mobile
+    const nameInputs = getAllElements('name-input');
+    nameInputs.forEach((nameInput, index) => {
+      if (nameInput) {
+        nameInput.addEventListener('input', function() {
+          // Clear other inputs when typing in one
+          nameInputs.forEach((otherInput, otherIndex) => {
+            if (otherIndex !== index && otherInput) {
+              otherInput.value = '';
+              // Hide other clear buttons
+              const clearBtns = getAllElements('clearbtn');
+              if (clearBtns[otherIndex]) {
+                clearBtns[otherIndex].style.display = 'none';
+              }
+            }
+          });
+          
+          updateTextDistortion();
+        });
+        
+        // Initial render if there's already text
+        if (nameInput.value) {
+          updateTextDistortion();
+        }
       }
-    }
+    });
     
     // Initialize mouse tracking
     setupMouseTracking();
     
+    // Initialize bottom sheet for mobile navigation
+    initBottomSheet();
+    
     // Check if touch mode is active by default and start mouse tracking
-    const touchButton = document.getElementById('touch') || document.getElementById('torch');
-    if (touchButton && touchButton.classList.contains('active')) {
+    const touchButtons = getAllElements('touch');
+    const touchButton = touchButtons.find(btn => btn && btn.classList.contains('active'));
+    if (touchButton) {
       isMouseTracking = true;
     }
   });
   
-  // Add window resize listener for responsive font scaling
+    // Add window resize listener for responsive font scaling
   window.addEventListener('resize', () => {
     if (loadedFont) {
-      updateTextDistortion(); // Regenerate text with new responsive font size
+      const nameInput = getActiveInput();
+      const text = nameInput ? nameInput.value : '';
+      if (text) {
+        updateTextDistortion();
+      }
     }
   });
 });
@@ -100,9 +246,28 @@ window.addEventListener('DOMContentLoaded', () => {
 function updateTextDistortion() {
   if (!loadedFont) return;
   
-  const nameInput = document.getElementById('name-input');
-  const text = nameInput.value.toUpperCase();
+  // Get the input that actually has content
+  const nameInputs = getAllElements('name-input');
+  let activeInput = null;
+  let text = '';
+  
+  // Find which input has content
+  for (const input of nameInputs) {
+    if (input && input.value) {
+      activeInput = input;
+      text = input.value.toUpperCase();
+      break;
+    }
+  }
+  
+  // If no input has content, check for any input (for clearing)
+  if (!activeInput && nameInputs.length > 0) {
+    activeInput = nameInputs[0];
+    text = activeInput ? activeInput.value.toUpperCase() : '';
+  }
+  
   const distortionEffects = document.querySelectorAll('.distortion-effect');
+  const distortionPath = document.querySelector('.distortion-path');
   
   // Clear all divs first and reset properties
   distortionEffects.forEach(div => {
@@ -116,6 +281,15 @@ function updateTextDistortion() {
   
   if (text.length === 0) return;
   
+  // Calculate text scale to fit container
+  const textScale = calculateTextScale(text);
+  
+  // Apply scaled gap to distortion-path to eliminate spacing issues
+  if (distortionPath) {
+    const scaledGap = 0.676 * textScale;
+    distortionPath.style.gap = `${scaledGap}px`;
+  }
+  
   // Convert text to SVG paths and distribute across divs
   const fontSize = getResponsiveFontSize(); // Responsive font size based on screen width
   
@@ -124,10 +298,11 @@ function updateTextDistortion() {
     const div = distortionEffects[i];
     
     if (char === ' ') {
-      // Handle spaces - create a thin div with no content
+      // Handle spaces - create a thin div with no content, also scaled
       div.style.height = `${fontSize}px`;
-      div.style.width = '24px';
-      div.style.flex = '0 0 24px';
+      const scaledSpaceWidth = 40 * textScale;
+      div.style.width = `${scaledSpaceWidth}px`;
+      div.style.flex = `0 0 ${scaledSpaceWidth}px`;
       continue;
     }
     
@@ -146,9 +321,12 @@ function updateTextDistortion() {
     const naturalWidth = (bounds.x2 - bounds.x1) * scale;
     const paddedWidth = naturalWidth + 4; // Add 4px padding to prevent cutoff
 
-    // Set div to padded character width
-    div.style.width = `${paddedWidth}px`;
-    div.style.flex = `0 0 ${paddedWidth}px`;
+    // Apply scaling to the div width to prevent container expansion
+    const scaledWidth = paddedWidth * textScale;
+
+    // Set div to scaled character width
+    div.style.width = `${scaledWidth}px`;
+    div.style.flex = `0 0 ${scaledWidth}px`;
 
     // Set up SVG with proper top alignment - adjust viewBox to position text at top
     svg.setAttribute('viewBox', `0 -${fontSize * 0.71} ${paddedWidth} ${fontSize}`);
@@ -156,6 +334,8 @@ function updateTextDistortion() {
     svg.setAttribute('height', '100%');
     svg.setAttribute('preserveAspectRatio', 'none');
     svg.style.display = 'block';
+    
+    // Don't scale SVG - let it fill the scaled div completely
 
     // Set up the path with correct positioning
     pathElement.setAttribute('d', path.toPathData());
@@ -170,8 +350,10 @@ function updateTextDistortion() {
   
   // Apply current distortion if bar is active - but only if audio is active
   // Text starts at default height, distortions only activate with sound
-  const barButton = document.getElementById('bar');
-  const soundButton = document.getElementById('sound');
+  const barButtons = getAllElements('bar');
+  const soundButtons = getAllElements('sound');
+  const barButton = barButtons.find(btn => btn);
+  const soundButton = soundButtons.find(btn => btn);
   if (barButton && barButton.classList.contains('active') && 
       soundButton && soundButton.classList.contains('active') && isAudioEnabled) {
     // Don't apply static distortion, wait for audio input
@@ -249,8 +431,9 @@ function startAudioAnalysis() {
   if (!isAudioEnabled) return;
   
   // Don't start audio analysis if touch mode is active
-  const touchButton = document.getElementById('touch');
-  if (touchButton && touchButton.classList.contains('active')) {
+  const touchButtons = getAllElements('touch');
+  const touchButton = touchButtons.find(btn => btn && btn.classList.contains('active'));
+  if (touchButton) {
     return;
   }
   
@@ -271,10 +454,10 @@ function stopAudioAnalysis() {
 }
 
 function updateDistortionWithAudio(audioData) {
-  const activeButton = document.querySelector('#distorts .ctrls-btn.active');
+  const activeButton = querySelectorDual('#distorts .ctrls-btn.active');
   if (!activeButton) return;
   
-  const distortionType = activeButton.id;
+  const distortionType = activeButton.id.replace('md-', ''); // Handle both desktop and mobile IDs
   const { volume, frequencies } = audioData;
   
   // Apply audio-reactive distortion based on active effect
@@ -292,30 +475,25 @@ function setupMouseTracking() {
   const resultContainer = document.querySelector('.result-container');
   if (!resultContainer) return;
   
+  // Check if device has touch capability (but don't exclude mouse support)
+  const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  
+  // Always set up mouse events for devices that support them
   resultContainer.addEventListener('mousemove', (e) => {
-    // Don't track mouse if sound mode is active
-    const soundButton = document.getElementById('sound');
-    if (soundButton && soundButton.classList.contains('active')) {
-      return;
-    }
-    
+    if (!isMouseTracking) return;
     const rect = resultContainer.getBoundingClientRect();
     // Normalize mouse position to 0-1 range
     mouseX = (e.clientX - rect.left) / rect.width;
     mouseY = (e.clientY - rect.top) / rect.height;
-    
-    // Clamp values between 0 and 1
+    // Clamp values
     mouseX = Math.max(0, Math.min(1, mouseX));
     mouseY = Math.max(0, Math.min(1, mouseY));
   });
   
+  // Activate tracking on mouse enter
   resultContainer.addEventListener('mouseenter', () => {
-    // Don't activate mouse tracking if sound mode is active
-    const soundButton = document.getElementById('sound');
-    if (soundButton && soundButton.classList.contains('active')) {
-      return;
-    }
-    
+    const touchBtn = getElement('touch');
+    if (!touchBtn || !touchBtn.classList.contains('active')) return;
     isMouseTracking = true;
     startMouseDistortion();
   });
@@ -325,6 +503,45 @@ function setupMouseTracking() {
     stopMouseDistortion();
     resetToDefaultHeight();
   });
+  
+  // If device supports touch, also add touch events
+  if (hasTouch) {
+    resultContainer.addEventListener('touchmove', (e) => {
+      if (!isMouseTracking) return;
+      const touch = e.touches[0];
+      const rect = resultContainer.getBoundingClientRect();
+      mouseX = (touch.clientX - rect.left) / rect.width;
+      mouseY = (touch.clientY - rect.top) / rect.height;
+      mouseX = Math.max(0, Math.min(1, mouseX));
+      mouseY = Math.max(0, Math.min(1, mouseY));
+      e.preventDefault();
+    }, { passive: false });
+    
+    // Start tracking on touch start
+    resultContainer.addEventListener('touchstart', (e) => {
+      const touchBtn = getElement('touch');
+      if (!touchBtn || !touchBtn.classList.contains('active')) return;
+      isMouseTracking = true;
+      
+      // Set initial position
+      const touch = e.touches[0];
+      const rect = resultContainer.getBoundingClientRect();
+      mouseX = (touch.clientX - rect.left) / rect.width;
+      mouseY = (touch.clientY - rect.top) / rect.height;
+      mouseX = Math.max(0, Math.min(1, mouseX));
+      mouseY = Math.max(0, Math.min(1, mouseY));
+      
+      startMouseDistortion();
+      e.preventDefault();
+    }, { passive: false });
+    
+    // Stop tracking on touch end
+    resultContainer.addEventListener('touchend', () => {
+      isMouseTracking = false;
+      stopMouseDistortion();
+      resetToDefaultHeight();
+    });
+  }
 }
 
 function startMouseDistortion() {
@@ -346,10 +563,10 @@ function stopMouseDistortion() {
 }
 
 function updateDistortionWithMouse() {
-  const activeButton = document.querySelector('#distorts .ctrls-btn.active');
+  const activeButton = querySelectorDual('#distorts .ctrls-btn.active');
   if (!activeButton) return;
   
-  const distortionType = activeButton.id;
+  const distortionType = activeButton.id.replace('md-', ''); // Handle both desktop and mobile IDs
   
   // Apply mouse-reactive distortion based on active effect
   if (distortionType === 'bar') {
@@ -365,8 +582,8 @@ function updateDistortionWithMouse() {
 function applyMouseReactiveBar() {
   const distortionEffects = document.querySelectorAll('.distortion-effect');
   const distortionPath = document.querySelector('.distortion-path');
-  const nameInput = document.getElementById('name-input');
-  const text = nameInput.value.toUpperCase();
+  const nameInput = getActiveInput();
+  const text = nameInput ? nameInput.value.toUpperCase() : '';
   const letterCount = text.length;
   
   // Set bar alignment classes
@@ -407,8 +624,8 @@ function applyMouseReactiveBar() {
 function applyMouseReactiveWave() {
   const distortionEffects = document.querySelectorAll('.distortion-effect');
   const distortionPath = document.querySelector('.distortion-path');
-  const nameInput = document.getElementById('name-input');
-  const text = nameInput.value.toUpperCase();
+  const nameInput = getActiveInput();
+  const text = nameInput ? nameInput.value.toUpperCase() : '';
   const letterCount = text.length;
   
   // Set wave alignment classes
@@ -452,8 +669,8 @@ function applyMouseReactiveWave() {
 function applyMouseReactiveArc() {
   const distortionEffects = document.querySelectorAll('.distortion-effect');
   const distortionPath = document.querySelector('.distortion-path');
-  const nameInput = document.getElementById('name-input');
-  const text = nameInput.value.toUpperCase();
+  const nameInput = getActiveInput();
+  const text = nameInput ? nameInput.value.toUpperCase() : '';
   const letterCount = text.length;
   
   // Set arc alignment classes
@@ -498,8 +715,8 @@ function applyMouseReactiveArc() {
 function applyAudioReactiveBar(volume, frequencies) {
   const distortionEffects = document.querySelectorAll('.distortion-effect');
   const distortionPath = document.querySelector('.distortion-path');
-  const nameInput = document.getElementById('name-input');
-  const text = nameInput.value.toUpperCase();
+  const nameInput = getActiveInput();
+  const text = nameInput ? nameInput.value.toUpperCase() : '';
   const letterCount = text.length;
   
   // Set bar alignment classes
@@ -539,8 +756,8 @@ function applyAudioReactiveBar(volume, frequencies) {
 function applyAudioReactiveWave(volume, frequencies) {
   const distortionEffects = document.querySelectorAll('.distortion-effect');
   const distortionPath = document.querySelector('.distortion-path');
-  const nameInput = document.getElementById('name-input');
-  const text = nameInput.value.toUpperCase();
+  const nameInput = getActiveInput();
+  const text = nameInput ? nameInput.value.toUpperCase() : '';
   const letterCount = text.length;
   
   // Set wave alignment classes
@@ -584,8 +801,8 @@ function applyAudioReactiveWave(volume, frequencies) {
 function applyAudioReactiveArc(volume, frequencies) {
   const distortionEffects = document.querySelectorAll('.distortion-effect');
   const distortionPath = document.querySelector('.distortion-path');
-  const nameInput = document.getElementById('name-input');
-  const text = nameInput.value.toUpperCase();
+  const nameInput = getActiveInput();
+  const text = nameInput ? nameInput.value.toUpperCase() : '';
   const letterCount = text.length;
   
   // Set arc alignment classes
@@ -635,13 +852,21 @@ function updateAudioViewBox(div, char) {
     const naturalWidth = (bounds.x2 - bounds.x1) * scale;
     const paddedWidth = naturalWidth + 4;
     updateViewBoxForBaseline(div, svg, paddedWidth, fontSize);
+    
+    // Maintain text scaling on SVG
+    const nameInput = getActiveInput();
+    const text = nameInput ? nameInput.value.toUpperCase() : '';
+    const textScale = calculateTextScale(text);
+    // Remove SVG scaling - div scaling handles it
+    svg.style.transform = '';
+    svg.style.transformOrigin = '';
   }
 }
 
 // Handle distortion type controls
-document.querySelectorAll('#distorts .ctrls-btn').forEach(btn => {
+querySelectorAllDual('#distorts .ctrls-btn').forEach(btn => {
   btn.addEventListener('click', function() {
-    document.querySelectorAll('#distorts .ctrls-btn').forEach(b => b.classList.remove('active'));
+    querySelectorAllDual('#distorts .ctrls-btn').forEach(b => b.classList.remove('active'));
     this.classList.add('active');
     
     // Stop audio analysis when switching effects
@@ -651,7 +876,7 @@ document.querySelectorAll('#distorts .ctrls-btn').forEach(btn => {
     resetToDefaultHeight();
     
     // Only start audio analysis if sound mode is active and audio is enabled
-    const soundButton = document.getElementById('sound');
+    const soundButton = getElement('sound');
     if (soundButton && soundButton.classList.contains('active') && isAudioEnabled) {
       startAudioAnalysis();
     }
@@ -659,17 +884,17 @@ document.querySelectorAll('#distorts .ctrls-btn').forEach(btn => {
 });
 
 // Handle sound/touch controls
-document.querySelectorAll('#ctrls .ctrls-btn').forEach(btn => {
+querySelectorAllDual('#ctrls .ctrls-btn').forEach(btn => {
   btn.addEventListener('click', async function() {
-    document.querySelectorAll('#ctrls .ctrls-btn').forEach(b => b.classList.remove('active'));
+    querySelectorAllDual('#ctrls .ctrls-btn').forEach(b => b.classList.remove('active'));
     this.classList.add('active');
     
-    if (this.id === 'sound') {
-      // Enable audio-reactive mode
-      stopMouseDistortion(); // Stop mouse tracking first
+    const buttonType = this.id.replace('md-', ''); // Handle both desktop and mobile IDs
+    
+    if (buttonType === 'sound') {
+      // Enable audio-reactive mode: stop mouse tracking
+      stopMouseDistortion();
       isMouseTracking = false;
-      
-      // Reset to default height to clear any mouse effects
       resetToDefaultHeight();
       
       if (!isAudioEnabled) {
@@ -678,17 +903,18 @@ document.querySelectorAll('#ctrls .ctrls-btn').forEach(btn => {
       if (isAudioEnabled) {
         startAudioAnalysis();
       }
-    } else if (this.id === 'touch') {
-      // Enable mouse-reactive mode
+    } else if (buttonType === 'touch') {
+      // Enable touch-reactive mode
       stopAudioAnalysis(); // Stop audio analysis first
       isMouseTracking = true;
       
       // Reset to default height to clear any audio effects
       resetToDefaultHeight();
       
-      // Check if mouse is over the result container
+      // Check if mouse is over the result container (for devices with mouse support)
       const resultContainer = document.querySelector('.result-container');
-      if (resultContainer) {
+      if (resultContainer && event.clientX !== undefined) {
+        // Only check mouse position if the event has mouse coordinates
         const rect = resultContainer.getBoundingClientRect();
         const mouseOverContainer = 
           event.clientX >= rect.left && 
@@ -702,6 +928,7 @@ document.querySelectorAll('#ctrls .ctrls-btn').forEach(btn => {
           resetToDefaultHeight();
         }
       }
+      // For touch devices or when mouse position is unknown, distortion will start when user interacts with the area
     }
   });
 });
@@ -710,20 +937,30 @@ document.querySelectorAll('#ctrls .ctrls-btn').forEach(btn => {
 function resetToDefaultHeight() {
   const distortionEffects = document.querySelectorAll('.distortion-effect');
   const distortionPath = document.querySelector('.distortion-path');
-  const nameInput = document.getElementById('name-input');
-  const text = nameInput.value.toUpperCase();
+  const nameInput = getActiveInput();
+  const text = nameInput ? nameInput.value.toUpperCase() : '';
   
   // Set appropriate alignment class but keep default heights
   distortionPath.classList.remove('wave-alignment', 'arc-alignment', 'bar-alignment');
-  const activeDistortion = document.querySelector('#distorts .ctrls-btn.active');
+  const activeDistortion = querySelectorDual('#distorts .ctrls-btn.active');
   if (activeDistortion) {
-    if (activeDistortion.id === 'wave') {
+    const distortionType = activeDistortion.id.replace('md-', ''); // Handle both desktop and mobile IDs
+    if (distortionType === 'wave') {
       distortionPath.classList.add('wave-alignment');
-    } else if (activeDistortion.id === 'arc') {
+    } else if (distortionType === 'arc') {
       distortionPath.classList.add('arc-alignment');
     } else {
       distortionPath.classList.add('bar-alignment');
     }
+  }
+  
+  // Recalculate text scale and apply to SVGs
+  const textScale = calculateTextScale(text);
+  
+  // Apply scaled gap to distortion-path
+  if (distortionPath) {
+    const scaledGap = 0.676 * textScale;
+    distortionPath.style.gap = `${scaledGap}px`;
   }
   
   distortionEffects.forEach((div, i) => {
@@ -733,6 +970,14 @@ function resetToDefaultHeight() {
     if (i < text.length && div.innerHTML) {
       const fontSize = getResponsiveFontSize();
       div.style.height = `${fontSize}px`; // Use responsive font size
+      
+      // Apply scaling to SVG if it exists
+      const svg = div.querySelector('svg');
+      if (svg) {
+        // Remove any transform scaling - div scaling handles it
+        svg.style.transform = '';
+        svg.style.transformOrigin = '';
+      }
     } else {
       div.style.height = '0px';
     }
@@ -744,8 +989,8 @@ function resetToDefaultHeight() {
 function applyBarDistortion() {
   const distortionEffects = document.querySelectorAll('.distortion-effect');
   const distortionPath = document.querySelector('.distortion-path');
-  const nameInput = document.getElementById('name-input');
-  const text = nameInput.value.toUpperCase();
+  const nameInput = getActiveInput();
+  const text = nameInput ? nameInput.value.toUpperCase() : '';
   const letterCount = text.length;
   
   // Set bar alignment
@@ -812,8 +1057,8 @@ function applyBarDistortion() {
 function applyWaveDistortion() {
   const distortionEffects = document.querySelectorAll('.distortion-effect');
   const distortionPath = document.querySelector('.distortion-path');
-  const nameInput = document.getElementById('name-input');
-  const text = nameInput.value.toUpperCase();
+  const nameInput = getActiveInput();
+  const text = nameInput ? nameInput.value.toUpperCase() : '';
   const letterCount = text.length;
   
   // Set wave alignment
@@ -890,8 +1135,8 @@ function applyWaveDistortion() {
 function applyArcDistortion() {
   const distortionEffects = document.querySelectorAll('.distortion-effect');
   const distortionPath = document.querySelector('.distortion-path');
-  const nameInput = document.getElementById('name-input');
-  const text = nameInput.value.toUpperCase();
+  const nameInput = getActiveInput();
+  const text = nameInput ? nameInput.value.toUpperCase() : '';
   const letterCount = text.length;
   
   // Set arc alignment
@@ -970,36 +1215,47 @@ function applyArcDistortion() {
 // The clear button clears the input field and hides itself when clicked
 // It also focuses back on the input field after clearing
 document.addEventListener('DOMContentLoaded', function() {
-  const input = document.getElementById('name-input');
-  const clearBtn = document.getElementById('clearbtn');
+  // Set up both desktop and mobile input/clear button pairs
+  getAllElements('name-input').forEach((input, index) => {
+    const clearBtns = getAllElements('clearbtn');
+    const clearBtn = clearBtns[index];
+    
+    if (!input || !clearBtn) return;
 
-  // Hide clear button initially
-  clearBtn.style.display = 'none';
-
-  // Show/hide clear button on input
-  input.addEventListener('input', function() {
-    clearBtn.style.display = input.value.length > 0 ? 'flex' : 'none';
-  });
-
-  // Clear input and hide button on click
-  clearBtn.addEventListener('click', function() {
-    input.value = '';
+    // Hide clear button initially
     clearBtn.style.display = 'none';
-    input.focus();
-    
-    // Clear all distortion effect divs
-    const distortionEffects = document.querySelectorAll('.distortion-effect');
-    distortionEffects.forEach(div => {
-      div.innerHTML = '';
-      div.style.height = '0px';
-      div.style.width = '0px';
-      div.style.flex = '0 0 0px';
-      div.style.minWidth = '0px';
-      div.style.maxWidth = 'none';
+
+    // Show/hide clear button on input
+    input.addEventListener('input', function() {
+      clearBtn.style.display = input.value.length > 0 ? 'flex' : 'none';
     });
-    
-    // Stop any ongoing audio or mouse analysis
-    stopAudioAnalysis();
+
+    // Clear input and hide button on click
+    clearBtn.addEventListener('click', function() {
+      // Clear all inputs and hide all clear buttons
+      getAllElements('name-input').forEach(inp => {
+        if (inp) inp.value = '';
+      });
+      getAllElements('clearbtn').forEach(btn => {
+        if (btn) btn.style.display = 'none';
+      });
+      
+      input.focus();
+      
+      // Clear all distortion effect divs
+      const distortionEffects = document.querySelectorAll('.distortion-effect');
+      distortionEffects.forEach(div => {
+        div.innerHTML = '';
+        div.style.height = '0px';
+        div.style.width = '0px';
+        div.style.flex = '0 0 0px';
+        div.style.minWidth = '0px';
+        div.style.maxWidth = 'none';
+      });
+      
+      // Stop any ongoing audio or mouse analysis
+      stopAudioAnalysis();
+    });
   });
 });
 
@@ -1012,72 +1268,284 @@ document.addEventListener('DOMContentLoaded', function() {
 // The slider is styled to look like a custom range input with a thumb and fill.
 // The bits are highlighted based on the current value, and the thumb's position is updated accordingly
 document.addEventListener('DOMContentLoaded', function() {
-  const slider = document.getElementById('custom-slider');
-  const thumb = document.getElementById('slider-thumb');
-  const fill = slider.querySelector('.range-fill');
-  const bits = document.querySelectorAll('.range-bits');
-  let dragging = false;
-  let value = 3; // default value
+  // Set up both desktop and mobile sliders
+  getAllElements('custom-slider').forEach((slider, index) => {
+    const thumbs = getAllElements('slider-thumb');
+    const thumb = thumbs[index];
+    
+    if (!slider || !thumb) return;
+    
+    const fill = slider.querySelector('.range-fill');
+    const bits = slider.closest('.nav-section').querySelectorAll('.range-bits');
+    let dragging = false;
+    let value = 3; // default value
 
-  function setThumbPosition(val) {
-  const min = 1, max = 5;
-  const targetBit = bits[val - 1];
-  if (targetBit) {
-    const bitRect = targetBit.getBoundingClientRect();
-    const sliderRect = slider.getBoundingClientRect();
-    // Align thumb's left edge with bit's left edge
-    const bitLeft = bitRect.left - sliderRect.left;
-    thumb.style.left = `${bitLeft}px`;
-    // Fill up to the right edge of the bit
-    if (val === max) {
-      fill.style.width = '100%';
-    } else {
-      fill.style.width = `${bitLeft + bitRect.width}px`;
+    function setThumbPosition(val) {
+      const min = 1, max = 5;
+      const targetBit = bits[val - 1];
+      if (targetBit) {
+        const bitRect = targetBit.getBoundingClientRect();
+        const sliderRect = slider.getBoundingClientRect();
+        // Align thumb's left edge with bit's left edge
+        const bitLeft = bitRect.left - sliderRect.left;
+        thumb.style.left = `${bitLeft}px`;
+        // Fill up to the right edge of the bit
+        if (val === max) {
+          fill.style.width = '100%';
+        } else {
+          fill.style.width = `${bitLeft + bitRect.width}px`;
+        }
+      }
+      for (let i = 0; i < bits.length; i++) {
+        bits[i].classList.toggle('active', i < val);
+      }
     }
-  }
-  for (let i = 0; i < bits.length; i++) {
-    bits[i].classList.toggle('active', i < val);
-  }
-}
 
-
-  thumb.addEventListener('mousedown', (e) => {
-    dragging = true;
-    document.body.style.userSelect = 'none';
-  });
-  document.addEventListener('mouseup', () => {
-    dragging = false;
-    document.body.style.userSelect = '';
-  });
-  document.addEventListener('mousemove', (e) => {
-    if (!dragging) return;
-    const rect = slider.getBoundingClientRect();
-    let x = e.clientX - rect.left;
-    x = Math.max(0, Math.min(x, rect.width));
-    const min = 1, max = 5;
-    const val = Math.round((x / rect.width) * (max - min) + min);
-    value = Math.max(min, Math.min(val, max));
-    setThumbPosition(value);
-  });
-
-  // Click on bits to set value
-  for (let i = 0; i < bits.length; i++) {
-    bits[i].addEventListener('click', () => {
-      value = i + 1;
+    thumb.addEventListener('mousedown', (e) => {
+      dragging = true;
+      document.body.style.userSelect = 'none';
+    });
+    
+    document.addEventListener('mouseup', () => {
+      dragging = false;
+      document.body.style.userSelect = '';
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const rect = slider.getBoundingClientRect();
+      let x = e.clientX - rect.left;
+      x = Math.max(0, Math.min(x, rect.width));
+      const min = 1, max = 5;
+      const val = Math.round((x / rect.width) * (max - min) + min);
+      value = Math.max(min, Math.min(val, max));
       setThumbPosition(value);
     });
-  }
 
-  // Click on slider bar
-  slider.addEventListener('click', (e) => {
-    const rect = slider.getBoundingClientRect();
-    let x = e.clientX - rect.left;
-    const min = 1, max = 5;
-    const val = Math.round((x / rect.width) * (max - min) + min);
-    value = Math.max(min, Math.min(val, max));
+    // Click on bits to set value
+    for (let i = 0; i < bits.length; i++) {
+      bits[i].addEventListener('click', () => {
+        value = i + 1;
+        setThumbPosition(value);
+      });
+    }
+
+    // Click on slider bar
+    slider.addEventListener('click', (e) => {
+      const rect = slider.getBoundingClientRect();
+      let x = e.clientX - rect.left;
+      const min = 1, max = 5;
+      const val = Math.round((x / rect.width) * (max - min) + min);
+      value = Math.max(min, Math.min(val, max));
+      setThumbPosition(value);
+    });
+
+    // Initialize
     setThumbPosition(value);
   });
-
-  // Initialize
-  setThumbPosition(value);
 });
+
+// Bottom sheet interaction for mobile navigation
+function initBottomSheet() {
+  const mobileNav = document.getElementById('mobile-nav');
+  // Target the specific control containers, not the entire panels div
+  const controlsContainers = mobileNav?.querySelectorAll('.controls-container');
+  const mobileGrabber = mobileNav?.querySelector('.mobile-grabber');
+  
+  if (!mobileNav || !controlsContainers || controlsContainers.length === 0 || !mobileGrabber) return;
+  
+  let isDragging = false;
+  let startY = 0;
+  let currentY = 0;
+  let isCollapsed = false;
+  let lastFrameTime = 0;
+  const frameDelay = 16; // ~60fps (16ms between frames)
+  
+  // Update result container height for real-time scaling
+  function updateResultContainerHeight(dragProgress) {
+    const resultContainer = document.getElementById('result');
+    if (!resultContainer) return;
+    
+    // Base height for mobile (smaller to start with)
+    const baseHeight = window.innerWidth <= 599 ? 300 : 500;
+    
+    // Calculate additional height based on how much of the nav is hidden
+    // When dragProgress = 1 (fully hidden), add significant extra height
+    const extraHeight = dragProgress * 200; // Up to 200px extra height
+    
+    const newHeight = baseHeight + extraHeight;
+    resultContainer.style.height = `${newHeight}px`;
+    
+    // Trigger redraw of distortion if active using requestAnimationFrame for smooth updates
+    if (window.currentDistortionType && window.distortedFont) {
+      requestAnimationFrame(() => {
+        drawText(window.currentDistortionType);
+      });
+    }
+  }
+  
+  function getTouchY(e) {
+    return e.touches ? e.touches[0].clientY : e.clientY;
+  }
+  
+  function handleDragStart(e) {
+    // Don't start drag if the target is an input or button
+    const target = e.target;
+    if (target.tagName === 'INPUT' || target.tagName === 'BUTTON' || 
+        target.closest('#input-container') || target.closest('.controls-container')) {
+      return;
+    }
+    
+    isDragging = true;
+    startY = getTouchY(e);
+    
+    mobileNav.style.transition = 'none';
+    document.body.style.userSelect = 'none';
+    
+    // Attach move and end listeners to document for both mouse and touch
+    if (e.type === 'mousedown') {
+      document.addEventListener('mousemove', handleDragMove);
+      document.addEventListener('mouseup', handleDragEnd);
+    } else if (e.type === 'touchstart') {
+      document.addEventListener('touchmove', handleDragMove, { passive: false });
+      document.addEventListener('touchend', handleDragEnd);
+    }
+    e.preventDefault();
+  }
+  
+  function handleDragMove(e) {
+    if (!isDragging) return;
+    
+    e.preventDefault();
+    
+    // Throttle updates to ~60fps for smoother performance
+    const now = performance.now();
+    if (now - lastFrameTime < frameDelay) return;
+    lastFrameTime = now;
+    
+    currentY = getTouchY(e);
+    const deltaY = currentY - startY;
+    
+    // Calculate how much of the mobile nav should be visible
+    // Positive deltaY = dragging down = hiding nav
+    const maxDragDistance = 200; // Maximum drag distance before fully hidden
+    const dragProgress = Math.max(0, Math.min(deltaY / maxDragDistance, 1)); // 0 to 1
+    
+    // Don't move the nav - keep it in place and only shrink/expand it
+    // Calculate opacity for controls based on drag progress
+    // Start fading when 20% dragged, fully hidden at 70% dragged
+    let controlOpacity = 1;
+    if (dragProgress > 0.2) {
+      const fadeProgress = (dragProgress - 0.2) / 0.5; // 0.2 to 0.7 mapped to 0 to 1
+      controlOpacity = Math.max(0, 1 - fadeProgress);
+    }
+    
+    // Apply opacity to all control containers and hide when nearly invisible
+    controlsContainers.forEach(container => {
+      container.style.opacity = controlOpacity;
+      // Hide containers that are nearly invisible to allow nav to shrink in real-time
+      if (controlOpacity < 0.1) {
+        container.style.display = 'none';
+        mobileNav.classList.add('collapsed');
+      } else {
+        container.style.display = '';
+        mobileNav.classList.remove('collapsed');
+      }
+    });
+    
+    // Real-time distortion path scaling - adjust result container height
+    updateResultContainerHeight(dragProgress);
+  }
+  
+  function handleDragEnd(e) {
+    if (!isDragging) return;
+    
+    isDragging = false;
+    const deltaY = currentY - startY;
+    const threshold = 80; // Minimum drag distance to trigger collapse (40% of maxDragDistance)
+    
+    // Re-enable transitions for smooth snap animation
+    controlsContainers.forEach(container => {
+      container.style.transition = 'opacity 0.3s ease-out';
+    });
+    
+    // Determine final state based on drag distance
+    if (deltaY > threshold) {
+      // Dragged down enough - collapse (hide controls, nav shrinks to content)
+      isCollapsed = true;
+      mobileNav.classList.add('collapsed');
+      controlsContainers.forEach(container => {
+        container.style.opacity = '0';
+        container.style.display = 'none'; // Hide to allow nav to shrink
+      });
+      // Set final expanded distortion path height
+      updateResultContainerHeight(1);
+    } else {
+      // Not dragged enough or dragged up - expand (show controls, reset position)
+      isCollapsed = false;
+      mobileNav.classList.remove('collapsed');
+      controlsContainers.forEach(container => {
+        container.style.display = ''; // Show first to restore layout
+        container.style.opacity = '1';
+      });
+      // Reset distortion path to normal height
+      updateResultContainerHeight(0);
+    }
+    
+    // Clean up transitions after animation
+    setTimeout(() => {
+      controlsContainers.forEach(container => {
+        container.style.transition = '';
+      });
+    }, 300);
+    
+    // Re-enable interactions
+    document.body.style.userSelect = '';
+    
+    // Clean up mouse events
+    document.removeEventListener('mousemove', handleDragMove);
+    document.removeEventListener('mouseup', handleDragEnd);
+    document.removeEventListener('touchmove', handleDragMove);
+    document.removeEventListener('touchend', handleDragEnd);
+  }
+  
+  // Initialize drag listeners on entire mobile nav and grabber
+  mobileNav.addEventListener('touchstart', handleDragStart, { passive: true });
+  mobileNav.addEventListener('mousedown', handleDragStart);
+  mobileGrabber.addEventListener('touchstart', handleDragStart, { passive: false });
+  mobileGrabber.addEventListener('mousedown', handleDragStart);
+  // Fallback: toggle collapse/expand on grabber click
+  mobileGrabber.addEventListener('click', () => {
+    isCollapsed = !isCollapsed;
+    
+    // Add smooth transitions for click toggle
+    controlsContainers.forEach(container => {
+      container.style.transition = 'opacity 0.3s ease-out';
+    });
+    
+    if (isCollapsed) {
+      mobileNav.classList.add('collapsed');
+      controlsContainers.forEach(container => {
+        container.style.display = 'none';
+        container.style.opacity = '0';
+      });
+      // Set final expanded distortion path height
+      updateResultContainerHeight(1);
+    } else {
+      mobileNav.classList.remove('collapsed');
+      controlsContainers.forEach(container => {
+        container.style.display = '';
+        container.style.opacity = '1';
+      });
+      // Reset distortion path to normal height
+      updateResultContainerHeight(0);
+    }
+    
+    // Clean up transitions
+    setTimeout(() => {
+      controlsContainers.forEach(container => {
+        container.style.transition = '';
+      });
+    }, 300);
+  });
+}
