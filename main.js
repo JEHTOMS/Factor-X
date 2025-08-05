@@ -1276,7 +1276,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!slider || !thumb) return;
     
     const fill = slider.querySelector('.range-fill');
-    const bits = slider.closest('.nav-section').querySelectorAll('.range-bits');
+    const bits = slider.closest('section').querySelectorAll('.range-bits');
     let dragging = false;
     let value = 3; // default value
 
@@ -1306,7 +1306,19 @@ document.addEventListener('DOMContentLoaded', function() {
       document.body.style.userSelect = 'none';
     });
     
+    // Add touch events for mobile support
+    thumb.addEventListener('touchstart', (e) => {
+      dragging = true;
+      document.body.style.userSelect = 'none';
+      e.preventDefault(); // Prevent scrolling
+    }, { passive: false });
+    
     document.addEventListener('mouseup', () => {
+      dragging = false;
+      document.body.style.userSelect = '';
+    });
+    
+    document.addEventListener('touchend', () => {
       dragging = false;
       document.body.style.userSelect = '';
     });
@@ -1321,6 +1333,20 @@ document.addEventListener('DOMContentLoaded', function() {
       value = Math.max(min, Math.min(val, max));
       setThumbPosition(value);
     });
+    
+    // Add touch move support for mobile
+    document.addEventListener('touchmove', (e) => {
+      if (!dragging) return;
+      const rect = slider.getBoundingClientRect();
+      const touch = e.touches[0];
+      let x = touch.clientX - rect.left;
+      x = Math.max(0, Math.min(x, rect.width));
+      const min = 1, max = 5;
+      const val = Math.round((x / rect.width) * (max - min) + min);
+      value = Math.max(min, Math.min(val, max));
+      setThumbPosition(value);
+      e.preventDefault(); // Prevent scrolling
+    }, { passive: false });
 
     // Click on bits to set value
     for (let i = 0; i < bits.length; i++) {
@@ -1339,6 +1365,19 @@ document.addEventListener('DOMContentLoaded', function() {
       value = Math.max(min, Math.min(val, max));
       setThumbPosition(value);
     });
+    
+    // Add touch support for slider bar
+    slider.addEventListener('touchstart', (e) => {
+      if (e.target === thumb) return; // Don't interfere with thumb dragging
+      const rect = slider.getBoundingClientRect();
+      const touch = e.touches[0];
+      let x = touch.clientX - rect.left;
+      const min = 1, max = 5;
+      const val = Math.round((x / rect.width) * (max - min) + min);
+      value = Math.max(min, Math.min(val, max));
+      setThumbPosition(value);
+      e.preventDefault();
+    }, { passive: false });
 
     // Initialize
     setThumbPosition(value);
