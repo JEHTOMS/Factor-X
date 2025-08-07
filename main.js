@@ -375,10 +375,19 @@ function updateDownloadCursor() {
   const hasText = nameInput && nameInput.value.length > 0;
   const isDistorting = (isMouseTracking || isAudioEnabled) && hasText;
   
-  if (isDistorting && !isDownloadable) {
+  // Also check if there's currently visible distortion content
+  const distortionPath = document.querySelector('.distortion-path');
+  const hasVisibleDistortion = distortionPath && Array.from(distortionPath.children).some(div => 
+    div.innerHTML && div.style.height && div.style.height !== '0px'
+  );
+  
+  // Show download cursor if actively distorting OR if there's visible distortion content
+  const shouldShowDownloadCursor = (isDistorting || hasVisibleDistortion) && hasText;
+  
+  if (shouldShowDownloadCursor && !isDownloadable) {
     resultContainer.style.cursor = `url('${downloadCursorSVG}') 16 16, pointer`;
     isDownloadable = true;
-  } else if (!isDistorting && isDownloadable) {
+  } else if (!shouldShowDownloadCursor && isDownloadable) {
     resultContainer.style.cursor = 'default';
     isDownloadable = false;
   }
@@ -767,8 +776,14 @@ function setupMouseTracking() {
   resultContainer.addEventListener('mouseleave', () => {
     isMouseTracking = false;
     stopMouseDistortion();
-    resetToDefaultHeight();
-    updateDownloadCursor(); // Update cursor when leaving
+    // Don't immediately reset - let the updateDownloadCursor decide based on visible content
+    // We'll delay both the height reset and cursor update to allow for visible distortion to remain downloadable
+    setTimeout(() => {
+      if (!isMouseTracking && !isAudioEnabled) {
+        resetToDefaultHeight();
+      }
+      updateDownloadCursor(); // Update cursor after a brief delay
+    }, 100);
   });
   
   // If device supports touch, also add touch events
