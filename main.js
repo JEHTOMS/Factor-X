@@ -213,8 +213,7 @@ async function captureDistortionAsCanvas() {
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, canvas.width / scale, canvas.height / scale);
   
-  // Get all distortion effect divs with content
-  const distortionEffects = distortionPath.querySelectorAll('.distortion-effect');
+  // Get text input and calculate dimensions using string-based approach
   const nameInput = getActiveInput();
   const text = nameInput ? nameInput.value.toUpperCase() : '';
   
@@ -223,66 +222,54 @@ async function captureDistortionAsCanvas() {
   // Determine current alignment mode
   const alignmentMode = getDistortionAlignment();
   
-  // Calculate positions for rendering based on alignment
-  let currentX = padding;
-  
-  // Find the maximum height among all distortion divs for proper alignment calculation
-  let maxHeight = 0;
-  for (let i = 0; i < Math.min(text.length, distortionEffects.length); i++) {
-    const div = distortionEffects[i];
-    if (div.innerHTML && div.style.height !== '0px') {
-      const divHeight = parseFloat(div.style.height) || 0;
-      maxHeight = Math.max(maxHeight, divHeight);
-    }
-  }
-  
   // Calculate the container height for proper alignment
   const containerHeight = rect.height;
+  
+  // Use string-based calculation for accurate spacing
+  const fontSize = getResponsiveFontSize();
+  const textScale = calculateTextScale();
+  let currentX = padding;
   
   // Use promises to handle async SVG rendering
   const renderPromises = [];
   
-  for (let i = 0; i < Math.min(text.length, distortionEffects.length); i++) {
-    const div = distortionEffects[i];
+  // Process each character in the string
+  for (let i = 0; i < text.length; i++) {
     const char = text[i];
     
-    if (!div.innerHTML || div.style.height === '0px') continue;
-    
     if (char === ' ') {
-      currentX += parseFloat(div.style.width) || 0;
+      // For spaces, use the calculated space width directly from string calculation
+      const spaceWidth = 40 * textScale;
+      currentX += spaceWidth + (0.676 * textScale); // space + gap
       continue;
     }
     
-    const svg = div.querySelector('svg');
-    if (svg) {
-      const divWidth = parseFloat(div.style.width) || 0;
-      const divHeight = parseFloat(div.style.height) || 0;
-      
-      // Calculate Y position based on alignment mode to match CSS behavior
-      let yPosition;
-      switch (alignmentMode) {
-        case 'bar':
-          // Bar: align-items: flex-start - SVGs positioned at top (top: 0)
-          // Place at top of container
-          yPosition = padding;
-          break;
-        case 'wave':
-          // Wave: align-items: center - SVGs centered with transform: translateY(-50%)
-          // Center the character in the available space
-          yPosition = padding + (containerHeight - divHeight) / 2;
-          break;
-        case 'arc':
-          // Arc: align-items: flex-end - SVGs positioned at bottom (bottom: 0)
-          // Align to bottom of container
-          yPosition = padding + containerHeight - divHeight;
-          break;
-        default:
-          yPosition = padding;
-          break;
+    // For non-space characters, find corresponding DOM element
+    const distortionEffects = distortionPath.querySelectorAll('.distortion-effect');
+    const div = distortionEffects[i];
+    
+    if (div && div.style.height !== '0px') {
+      const svg = div.querySelector('svg');
+      if (svg) {
+        // Calculate character width using font metrics (more reliable than DOM)
+        const glyph = loadedFont.charToGlyph(char);
+        const bounds = glyph.getBoundingBox();
+        const glyphScale = fontSize / loadedFont.unitsPerEm;
+        const naturalWidth = (bounds.x2 - bounds.x1) * glyphScale;
+        const characterWidth = (naturalWidth + 4) * textScale; // Add padding and apply scale
+        
+        const divHeight = parseFloat(div.style.height) || 0;
+        let yPosition;
+        switch (alignmentMode) {
+          case 'bar': yPosition = padding; break;
+          case 'wave': yPosition = padding + (containerHeight - divHeight) / 2; break;
+          case 'arc': yPosition = padding + containerHeight - divHeight; break;
+          default: yPosition = padding;
+        }
+        
+        renderPromises.push(renderSVGToCanvas(ctx, svg, currentX, yPosition, characterWidth, divHeight));
+        currentX += characterWidth + (0.676 * textScale); // character + gap
       }
-      
-      renderPromises.push(renderSVGToCanvas(ctx, svg, currentX, yPosition, divWidth, divHeight));
-      currentX += divWidth;
     }
   }
   
