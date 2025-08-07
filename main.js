@@ -64,6 +64,23 @@ let mouseY = 0;
 let isMouseTracking = false;
 let mouseAnimationFrame = null;
 
+// Download functionality variables
+let isDownloadable = false;
+
+// Download cursor SVG as base64
+const downloadCursorSVG = `data:image/svg+xml;base64,${btoa(`<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_5130_284)">
+<path d="M15.56 32.0001C24.07 32.0001 31.12 24.9601 31.12 16.4401C31.12 7.92012 24.08 0.870117 15.55 0.870117C7.02 0.870117 0 7.92012 0 16.4301C0 24.9401 7.05 31.9901 15.56 31.9901V32.0001Z" fill="#E7E7E7"/>
+<path d="M15.5504 21.2101C15.2204 21.2101 14.9204 21.0701 14.6604 20.8201L9.51039 15.6201C9.28039 15.3801 9.15039 15.0501 9.15039 14.7601C9.15039 14.0701 9.62039 13.6001 10.2804 13.6001C10.6404 13.6001 10.9304 13.7101 11.1404 13.9601L12.0404 14.9201L14.5404 17.7501L14.3604 15.0701V8.58012C14.3604 7.87012 14.8304 7.37012 15.5504 7.37012C16.2704 7.37012 16.7304 7.87012 16.7304 8.58012V15.0701L16.5604 17.7401L19.0304 14.9401L19.9904 13.9601C20.2304 13.7201 20.5304 13.6001 20.8604 13.6001C21.5104 13.6001 21.9904 14.1001 21.9904 14.7601C21.9904 15.0801 21.8704 15.3601 21.6004 15.6301L16.4304 20.8101C16.1904 21.0501 15.8904 21.2001 15.5404 21.2001L15.5504 21.2101Z" fill="#404040"/>
+<path d="M9.83969 24.6503C9.17969 24.6503 8.67969 24.1503 8.67969 23.4603C8.67969 22.8103 9.17969 22.3203 9.83969 22.3203H21.2897C21.9497 22.3203 22.4497 22.8203 22.4497 23.4603C22.4497 24.1503 21.9497 24.6503 21.2897 24.6503H9.83969Z" fill="#404040"/>
+</g>
+<defs>
+<clipPath id="clip0_5130_284">
+<rect width="31.13" height="31.13" fill="white" transform="translate(0 0.870117)"/>
+</clipPath>
+</defs>
+</svg>`)}`;
+
 // Audio reactive variables
 const baseHeights = {
   bar: [600, 538, 477, 415, 354, 292, 231],
@@ -174,6 +191,199 @@ function calculateTextScale() {
   return 1; // No scaling needed
 }
 
+// Download functionality for distortion capture
+async function captureDistortionAsCanvas() {
+  const distortionPath = document.querySelector('.distortion-path');
+  if (!distortionPath) return null;
+  
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  
+  // Set high resolution (2x for retina displays)
+  const scale = 2;
+  const rect = distortionPath.getBoundingClientRect();
+  const padding = 40; // Add padding around the text
+  
+  canvas.width = (rect.width + padding * 2) * scale;
+  canvas.height = (rect.height + padding * 2) * scale;
+  
+  ctx.scale(scale, scale);
+  
+  // Set white background
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width / scale, canvas.height / scale);
+  
+  // Get all distortion effect divs with content
+  const distortionEffects = distortionPath.querySelectorAll('.distortion-effect');
+  const nameInput = getActiveInput();
+  const text = nameInput ? nameInput.value.toUpperCase() : '';
+  
+  if (!text) return null;
+  
+  // Determine current alignment mode
+  const alignmentMode = getDistortionAlignment();
+  
+  // Calculate positions for rendering based on alignment
+  let currentX = padding;
+  
+  // Find the maximum height among all distortion divs for proper alignment calculation
+  let maxHeight = 0;
+  for (let i = 0; i < Math.min(text.length, distortionEffects.length); i++) {
+    const div = distortionEffects[i];
+    if (div.innerHTML && div.style.height !== '0px') {
+      const divHeight = parseFloat(div.style.height) || 0;
+      maxHeight = Math.max(maxHeight, divHeight);
+    }
+  }
+  
+  // Calculate the container height for proper alignment
+  const containerHeight = rect.height;
+  
+  // Use promises to handle async SVG rendering
+  const renderPromises = [];
+  
+  for (let i = 0; i < Math.min(text.length, distortionEffects.length); i++) {
+    const div = distortionEffects[i];
+    const char = text[i];
+    
+    if (!div.innerHTML || div.style.height === '0px') continue;
+    
+    if (char === ' ') {
+      currentX += parseFloat(div.style.width) || 0;
+      continue;
+    }
+    
+    const svg = div.querySelector('svg');
+    if (svg) {
+      const divWidth = parseFloat(div.style.width) || 0;
+      const divHeight = parseFloat(div.style.height) || 0;
+      
+      // Calculate Y position based on alignment mode to match CSS behavior
+      let yPosition;
+      switch (alignmentMode) {
+        case 'bar':
+          // Bar: align-items: flex-start - SVGs positioned at top (top: 0)
+          // Place at top of container
+          yPosition = padding;
+          break;
+        case 'wave':
+          // Wave: align-items: center - SVGs centered with transform: translateY(-50%)
+          // Center the character in the available space
+          yPosition = padding + (containerHeight - divHeight) / 2;
+          break;
+        case 'arc':
+          // Arc: align-items: flex-end - SVGs positioned at bottom (bottom: 0)
+          // Align to bottom of container
+          yPosition = padding + containerHeight - divHeight;
+          break;
+        default:
+          yPosition = padding;
+          break;
+      }
+      
+      renderPromises.push(renderSVGToCanvas(ctx, svg, currentX, yPosition, divWidth, divHeight));
+      currentX += divWidth;
+    }
+  }
+  
+  // Wait for all SVG renders to complete
+  await Promise.all(renderPromises);
+  
+  return canvas;
+}
+
+// Helper function to determine current distortion alignment
+function getDistortionAlignment() {
+  const distortionPath = document.querySelector('.distortion-path');
+  if (!distortionPath) return 'bar';
+  
+  if (distortionPath.classList.contains('wave-alignment')) {
+    return 'wave';
+  } else if (distortionPath.classList.contains('arc-alignment')) {
+    return 'arc';
+  } else {
+    return 'bar';
+  }
+}
+
+async function renderSVGToCanvas(ctx, svg, x, y, width, height) {
+  return new Promise((resolve) => {
+    // Clone the SVG to avoid modifying the original
+    const svgClone = svg.cloneNode(true);
+    
+    // Get the SVG data
+    const svgData = new XMLSerializer().serializeToString(svgClone);
+    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
+    
+    const img = new Image();
+    img.onload = () => {
+      ctx.drawImage(img, x, y, width, height);
+      URL.revokeObjectURL(url);
+      resolve();
+    };
+    img.onerror = () => {
+      console.warn('Failed to load SVG for canvas rendering');
+      URL.revokeObjectURL(url);
+      resolve();
+    };
+    img.src = url;
+  });
+}
+
+async function downloadDistortion() {
+  try {
+    const canvas = await captureDistortionAsCanvas();
+    if (!canvas) {
+      console.warn('No distortion to download');
+      return;
+    }
+    
+    // Convert to blob and download
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        console.error('Failed to create image blob');
+        return;
+      }
+      
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const nameInput = getActiveInput();
+      const text = nameInput ? nameInput.value.replace(/[^a-zA-Z0-9]/g, '-') : 'distortion';
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+      
+      a.href = url;
+      a.download = `${text}-distortion-${timestamp}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      console.log('Distortion downloaded successfully');
+    }, 'image/png', 1.0); // High quality PNG
+  } catch (error) {
+    console.error('Failed to download distortion:', error);
+  }
+}
+
+function updateDownloadCursor() {
+  const resultContainer = document.querySelector('.result-container');
+  if (!resultContainer) return;
+  
+  // Check if distortion is active (either mouse tracking or audio enabled)
+  const nameInput = getActiveInput();
+  const hasText = nameInput && nameInput.value.length > 0;
+  const isDistorting = (isMouseTracking || isAudioEnabled) && hasText;
+  
+  if (isDistorting && !isDownloadable) {
+    resultContainer.style.cursor = `url('${downloadCursorSVG}') 16 16, pointer`;
+    isDownloadable = true;
+  } else if (!isDistorting && isDownloadable) {
+    resultContainer.style.cursor = 'default';
+    isDownloadable = false;
+  }
+}
+
 window.addEventListener('DOMContentLoaded', () => {
   console.log('DOMContentLoaded fired - Setting up div-based text distortion');
   
@@ -218,6 +428,9 @@ window.addEventListener('DOMContentLoaded', () => {
     
     // Initialize mouse tracking
     setupMouseTracking();
+    
+    // Initialize download functionality
+    setupDownloadFunctionality();
     
     // Initialize bottom sheet for mobile navigation
     initBottomSheet();
@@ -279,7 +492,10 @@ function updateTextDistortion() {
     div.style.maxWidth = 'none';
   });
   
-  if (text.length === 0) return;
+  if (text.length === 0) {
+    updateDownloadCursor(); // Update cursor when text is cleared
+    return;
+  }
   
   // Calculate text scale to fit container
   const textScale = calculateTextScale(text);
@@ -347,6 +563,9 @@ function updateTextDistortion() {
     // Set initial height to font size
     div.style.height = `${fontSize}px`;
   }
+  
+  // Update download cursor availability when text changes
+  updateDownloadCursor();
   
   // Apply current distortion if bar is active - but only if audio is active
   // Text starts at default height, distortions only activate with sound
@@ -542,12 +761,14 @@ function setupMouseTracking() {
     if (!touchBtn || !touchBtn.classList.contains('active')) return;
     isMouseTracking = true;
     startMouseDistortion();
+    updateDownloadCursor(); // Update cursor when entering
   });
   
   resultContainer.addEventListener('mouseleave', () => {
     isMouseTracking = false;
     stopMouseDistortion();
     resetToDefaultHeight();
+    updateDownloadCursor(); // Update cursor when leaving
   });
   
   // If device supports touch, also add touch events
@@ -578,6 +799,7 @@ function setupMouseTracking() {
       mouseY = Math.max(0, Math.min(1, mouseY));
       
       startMouseDistortion();
+      updateDownloadCursor();
       e.preventDefault();
     }, { passive: false });
     
@@ -586,8 +808,38 @@ function setupMouseTracking() {
       isMouseTracking = false;
       stopMouseDistortion();
       resetToDefaultHeight();
+      updateDownloadCursor();
     });
   }
+}
+
+function setupDownloadFunctionality() {
+  const resultContainer = document.querySelector('.result-container');
+  if (!resultContainer) return;
+  
+  // Add click handler for download
+  resultContainer.addEventListener('click', async (e) => {
+    // Only download if cursor is in download mode
+    if (isDownloadable) {
+      e.preventDefault();
+      e.stopPropagation();
+      await downloadDistortion();
+    }
+  });
+  
+  // Add keyboard shortcut (Ctrl/Cmd + S)
+  document.addEventListener('keydown', async (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      const nameInput = getActiveInput();
+      const hasText = nameInput && nameInput.value.length > 0;
+      const isDistorting = (isMouseTracking || isAudioEnabled) && hasText;
+      
+      if (isDistorting) {
+        e.preventDefault();
+        await downloadDistortion();
+      }
+    }
+  });
 }
 
 function startMouseDistortion() {
@@ -949,6 +1201,7 @@ querySelectorAllDual('#ctrls .ctrls-btn').forEach(btn => {
       if (isAudioEnabled) {
         startAudioAnalysis();
       }
+      updateDownloadCursor(); // Update cursor for audio mode
     } else if (buttonType === 'touch') {
       // Enable touch-reactive mode
       stopAndCleanupAudio(); // Completely stop audio and release microphone
@@ -971,6 +1224,7 @@ querySelectorAllDual('#ctrls .ctrls-btn').forEach(btn => {
           // Small delay to ensure resetToDefaultHeight completes first
           if (isMouseTracking) { // Only start if still in touch mode
             startMouseDistortion();
+            updateDownloadCursor(); // Update cursor for touch mode
           }
         }, 50);
       } else {
@@ -991,6 +1245,7 @@ querySelectorAllDual('#ctrls .ctrls-btn').forEach(btn => {
             resetToDefaultHeight();
           }
         }
+        updateDownloadCursor(); // Update cursor for touch mode
       }
     }
   });
