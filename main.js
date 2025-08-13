@@ -1727,6 +1727,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Bottom sheet interaction for mobile navigation
 function initBottomSheet() {
+  // Only initialize bottom sheet behavior on small screens
+  if (window.innerWidth >= 600) {
+    // Ensure desktop uses CSS height (not any leftover inline height)
+    const rc = document.querySelector('.result-container');
+    if (rc) rc.style.height = '';
+    return;
+  }
+  
   const mobileNav = document.getElementById('mobile-nav');
   const navContainer = mobileNav?.querySelector('.nav-container');
   const inputContainer = mobileNav?.querySelector('#input-container');
@@ -1836,6 +1844,15 @@ function initBottomSheet() {
   function handleResize() {
     clearTimeout(resizeTimeout);
     resizeTimeout = setTimeout(() => {
+      // If we are now on desktop, clear inline heights and stop adjusting
+      if (window.innerWidth >= 600) {
+        const resultContainer = document.querySelector('.result-container');
+        if (resultContainer) resultContainer.style.height = '';
+        // Remove the resize listener since we no longer manage mobile sheet
+        window.removeEventListener('resize', handleResize);
+        return;
+      }
+      
       // Store current state before measuring
       const wasCollapsed = isCollapsed;
       
@@ -1871,6 +1888,12 @@ function initBottomSheet() {
   function updateResultContainerHeight(dragProgress) {
     const resultContainer = document.querySelector('.result-container');
     if (!resultContainer) return;
+    
+    // Guard: on desktop, never force a fixed height; let CSS control it
+    if (window.innerWidth >= 600) {
+      resultContainer.style.height = '';
+      return;
+    }
     
     // Base height for mobile
     const baseHeight = window.innerWidth <= 599 ? 300 : 500;
